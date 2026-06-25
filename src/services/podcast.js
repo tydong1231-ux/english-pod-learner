@@ -2,6 +2,7 @@
 import { supabase, uploadAudio } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
 import { WhisperXService } from '../lib/whisperx';
+import { disableLocalEngine } from '../lib/env';
 
 // Constants for Status using Supabase Strings
 export const PodcastStatus = {
@@ -67,41 +68,47 @@ export class PodcastService {
             console.log(`Processing ${podcast.title}...`);
             let finalTranscript = null;
 
-            // Try WhisperX first
-            if (onStatusUpdate) onStatusUpdate('Checking WhisperX server...');
-            await supabase.from('podcasts').update({ progress: 'Checking WhisperX server...' }).eq('id', id);
+            if (!disableLocalEngine) {
+                // Try WhisperX first
+                if (onStatusUpdate) onStatusUpdate('Checking WhisperX server...');
+                await supabase.from('podcasts').update({ progress: 'Checking WhisperX server...' }).eq('id', id);
 
-            // Retry WhisperX check a few times (Server might be starting up)
-            // Heavy models can take 30-40s to load on GPU
-            let whisperXAvailable = false;
-            const MAX_RETRIES = 30; // 30 * 2s = 60s
-            for (let i = 0; i < MAX_RETRIES; i++) {
-                whisperXAvailable = await WhisperXService.isAvailable();
-                if (whisperXAvailable) break;
+                // Retry WhisperX check a few times (Server might be starting up)
+                // Heavy models can take 30-40s to load on GPU
+                let whisperXAvailable = false;
+                const MAX_RETRIES = 30; // 30 * 2s = 60s
+                for (let i = 0; i < MAX_RETRIES; i++) {
+                    whisperXAvailable = await WhisperXService.isAvailable();
+                    if (whisperXAvailable) break;
 
-                if (i < MAX_RETRIES - 1) {
-                    const msg = `Waiting for local engine (${i + 1}/${MAX_RETRIES})...`;
-                    console.log(msg);
-                    if (onStatusUpdate) onStatusUpdate(msg);
-                    await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
-                    await new Promise(r => setTimeout(r, 2000));
-                }
-            }
-
-            if (whisperXAvailable) {
-                try {
-                    if (onStatusUpdate) onStatusUpdate('Transcribing with WhisperX...');
-                    await supabase.from('podcasts').update({ progress: 'Transcribing with WhisperX...' }).eq('id', id);
-
-                    finalTranscript = await WhisperXService.transcribe(audioBlob, (msg) => {
-                        console.log('[WhisperX]', msg);
-                        supabase.from('podcasts').update({ progress: msg }).eq('id', id);
+                    if (i < MAX_RETRIES - 1) {
+                        const msg = `Waiting for local engine (${i + 1}/${MAX_RETRIES})...`;
+                        console.log(msg);
                         if (onStatusUpdate) onStatusUpdate(msg);
-                    });
-                } catch (whisperError) {
-                    console.error('[WhisperX] Failed:', whisperError);
-                    if (onStatusUpdate) onStatusUpdate('WhisperX failed, falling back to Gemini...');
+                        await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
                 }
+
+                if (whisperXAvailable) {
+                    try {
+                        if (onStatusUpdate) onStatusUpdate('Transcribing with WhisperX...');
+                        await supabase.from('podcasts').update({ progress: 'Transcribing with WhisperX...' }).eq('id', id);
+
+                        finalTranscript = await WhisperXService.transcribe(audioBlob, (msg) => {
+                            console.log('[WhisperX]', msg);
+                            supabase.from('podcasts').update({ progress: msg }).eq('id', id);
+                            if (onStatusUpdate) onStatusUpdate(msg);
+                        });
+                    } catch (whisperError) {
+                        console.error('[WhisperX] Failed:', whisperError);
+                        if (onStatusUpdate) onStatusUpdate('WhisperX failed, falling back to Gemini...');
+                    }
+                }
+            } else {
+                const msg = 'Local engine disabled, using Gemini...';
+                if (onStatusUpdate) onStatusUpdate(msg);
+                await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
             }
 
             // Fallback to Gemini

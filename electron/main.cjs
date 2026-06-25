@@ -13,6 +13,7 @@ let staticServer = null;
 let mainWindow = null;
 let whisperModel = process.env.WHISPER_MODEL || 'small';
 let pythonStopRequested = false;
+const disableLocalEngine = process.env.VITE_DISABLE_LOCAL_ENGINE === 'true';
 
 // Buffer logs until window is ready
 const logBuffer = [];
@@ -77,6 +78,17 @@ function sendLogToRenderer(message, type = 'info') {
 }
 
 function createPythonProcess() {
+    if (disableLocalEngine) {
+        backendStatus = {
+            phase: 'ready',
+            message: 'Local engine disabled; Gemini fallback only.',
+            ready: false
+        };
+        sendLogToRenderer('[Electron] Local WhisperX engine disabled by VITE_DISABLE_LOCAL_ENGINE=true');
+        sendStatusToRenderer(backendStatus);
+        return;
+    }
+
     let scriptPath;
     let pythonPath = 'python'; // Default to system python
     const fs = require('fs');
@@ -348,6 +360,11 @@ app.whenReady().then(() => {
     });
 
     ipcMain.on('set-whisper-model', (event, model) => {
+        if (disableLocalEngine) {
+            sendLogToRenderer('[Electron] Ignoring Whisper model change because local engine is disabled');
+            return;
+        }
+
         const allowedModels = new Set(['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3']);
         if (!allowedModels.has(model)) {
             sendLogToRenderer(`[Electron] Ignoring invalid Whisper model: ${model}`, 'error');
