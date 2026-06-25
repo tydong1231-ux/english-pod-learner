@@ -1,0 +1,5 @@
+flask
+flask-cors
+whisperx
+pyannote.audio==3.1.1
+# Note: Torch is installed separately with --index-url for CUDA support in the .bat script

@@ -1,0 +1,22 @@
+# Cloudflare Tunnel configuration template.
+# Copy this file to %USERPROFILE%\.cloudflared\config.yml and replace the
+# placeholder values before enabling remote access.
+
+tunnel: <your-tunnel-name-or-id>
+credentials-file: C:\Users\<you>\.cloudflared\<your-tunnel-credentials>.json
+
+ingress:
+  # Frontend - Vite dev server or packaged static server.
+  - hostname: podcast.botly.cn
+    service: http://localhost:5173
+    originRequest:
+      noTLSVerify: true
+
+  # Backend API - WhisperX service.
+  - hostname: api.botly.cn
+    service: http://localhost:8765
+    originRequest:
+      noTLSVerify: true
+
+  # Default fallback.
+  - service: http_status:404
