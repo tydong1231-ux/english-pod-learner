@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { remoteAccessPassword } from '../lib/env';
+import { getRemoteAccessPassword, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
 import styles from './PasswordGate.module.css';
 
 const MAX_ATTEMPTS = 5;
@@ -13,8 +13,18 @@ export function PasswordGate({ children }) {
     const [attempts, setAttempts] = useState(initialLockout.attempts);
     const [lockedUntil, setLockedUntil] = useState(initialLockout.lockedUntil);
     const [remainingTime, setRemainingTime] = useState(0);
+    const [configuredPassword, setConfiguredPassword] = useState(getRemoteAccessPassword);
 
-    const isConfigured = remoteAccessPassword.trim().length > 0;
+    const isConfigured = configuredPassword.trim().length > 0;
+
+    useEffect(() => {
+        const handleConfigChange = () => {
+            setConfiguredPassword(getRemoteAccessPassword());
+        };
+
+        window.addEventListener(RUNTIME_CONFIG_CHANGED, handleConfigChange);
+        return () => window.removeEventListener(RUNTIME_CONFIG_CHANGED, handleConfigChange);
+    }, []);
 
     useEffect(() => {
         if (!lockedUntil) return undefined;
@@ -45,7 +55,7 @@ export function PasswordGate({ children }) {
 
         if (isLocked || !isConfigured) return;
 
-        if (password === remoteAccessPassword) {
+        if (password === configuredPassword) {
             setIsUnlocked(true);
             sessionStorage.setItem('podfluent_auth', 'true');
             setError('');

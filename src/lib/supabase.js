@@ -1,32 +1,43 @@
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseRuntimeConfig } from './runtimeConfig';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let cachedClient = null;
+let cachedSignature = '';
 
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_KEY);
-
-function createMissingSupabaseClient() {
-    return new Proxy({}, {
-        get() {
-            throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.');
-        },
-    });
+export function isSupabaseConfigured() {
+    return getSupabaseRuntimeConfig().isConfigured;
 }
 
-export const supabase = isSupabaseConfigured
-    ? createClient(SUPABASE_URL, SUPABASE_KEY)
-    : createMissingSupabaseClient();
-
-export async function uploadAudio(file) {
-    if (!isSupabaseConfigured) {
-        throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.');
+function getSupabaseClient() {
+    const config = getSupabaseRuntimeConfig();
+    if (!config.isConfigured) {
+        throw new Error('Supabase is not configured. Open Settings and fill in Supabase URL and anon key.');
     }
 
+    const signature = `${config.url}|${config.anonKey}`;
+    if (!cachedClient || cachedSignature !== signature) {
+        cachedClient = createClient(config.url, config.anonKey);
+        cachedSignature = signature;
+    }
+
+    return cachedClient;
+}
+
+export const supabase = new Proxy({}, {
+    get(_target, prop) {
+        const client = getSupabaseClient();
+        const value = client[prop];
+        return typeof value === 'function' ? value.bind(client) : value;
+    },
+});
+
+export async function uploadAudio(file) {
+    const client = getSupabaseClient();
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}.${fileExt}`;
     const filePath = `${fileName}`;
 
-    const { error } = await supabase.storage
+    const { error } = await client.storage
         .from('audio-files')
         .upload(filePath, file);
 
@@ -34,7 +45,7 @@ export async function uploadAudio(file) {
         throw error;
     }
 
-    const { data: { publicUrl } } = supabase.storage
+    const { data: { publicUrl } } = client.storage
         .from('audio-files')
         .getPublicUrl(filePath);
 

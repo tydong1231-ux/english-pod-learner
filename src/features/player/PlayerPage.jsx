@@ -17,7 +17,7 @@ export function PlayerPage() {
     // State for data
     const [podcast, setPodcast] = useState(null);
     const [transcriptRecord, setTranscriptRecord] = useState(null);
-    const [loading, setLoading] = useState(isSupabaseConfigured);
+    const [loading, setLoading] = useState(isSupabaseConfigured());
 
     const { audioRef, isPlaying, togglePlay, seek, currentTime, duration, checkDuration } = useAudioPlayer();
     const { apiKey } = useStore();
@@ -35,7 +35,7 @@ export function PlayerPage() {
     // Fetch Podcast & Transcript
     useEffect(() => {
         async function fetchData() {
-            if (!isSupabaseConfigured) {
+            if (!isSupabaseConfigured()) {
                 return;
             }
 
@@ -120,14 +120,14 @@ export function PlayerPage() {
     };
 
     if (loading) return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: 50 }}><Loader className={styles.spin} /></div>;
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured()) {
         return (
             <div className="container">
                 <button className={styles.backBtn} onClick={() => navigate('/')}>
                     <ArrowLeft size={20} />
                     Library
                 </button>
-                <p>Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.</p>
+                <p>Supabase is not configured. Open Settings and fill in Supabase URL and anon key.</p>
             </div>
         );
     }

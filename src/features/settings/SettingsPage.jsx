@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw } from 'lucide-react';
+import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu } from 'lucide-react';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
 import { canUseLocalFeatures } from '../../lib/env';
+import { getRuntimeConfig, saveRuntimeConfig } from '../../lib/runtimeConfig';
 import styles from './SettingsPage.module.css';
 
 export function SettingsPage() {
     const { apiKey, setApiKey, transcriptionPrompt, setTranscriptionPrompt, geminiModel, setGeminiModel, whisperModel, setWhisperModel, remoteAccessEnabled, setRemoteAccessEnabled } = useStore();
+    const runtimeConfig = getRuntimeConfig();
     const [inputKey, setInputKey] = useState(apiKey || '');
     const [inputPrompt, setInputPrompt] = useState(transcriptionPrompt || '');
     const [selectedModel, setSelectedModel] = useState(geminiModel || 'gemini-2.0-flash-exp');
     const [selectedWhisper, setSelectedWhisper] = useState(whisperModel || 'small');
     const [isRemoteEnabled, setIsRemoteEnabled] = useState(Boolean(remoteAccessEnabled));
+    const [supabaseUrl, setSupabaseUrl] = useState(runtimeConfig.supabaseUrl || '');
+    const [supabaseAnonKey, setSupabaseAnonKey] = useState(runtimeConfig.supabaseAnonKey || '');
+    const [remotePassword, setRemotePassword] = useState(runtimeConfig.remoteAccessPassword || '');
+    const [isLocalEngineDisabled, setIsLocalEngineDisabled] = useState(Boolean(runtimeConfig.disableLocalEngine));
     const [status, setStatus] = useState('idle'); // idle, saving, saved, error
 
     // Notify Electron when remote setting changes (auto-apply)
@@ -29,7 +35,7 @@ export function SettingsPage() {
     }, [isRemoteEnabled]);
 
     const handleSave = () => {
-        if (!inputKey.trim()) {
+        if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
             setStatus('error');
             return;
         }
@@ -44,10 +50,17 @@ export function SettingsPage() {
         setGeminiModel(selectedModel);
         setWhisperModel(selectedWhisper);
         setRemoteAccessEnabled(isRemoteEnabled);
+        saveRuntimeConfig({
+            supabaseUrl,
+            supabaseAnonKey,
+            remoteAccessPassword: remotePassword,
+            disableLocalEngine: isLocalEngineDisabled,
+        });
         if (canUseLocalFeatures) {
             try {
                 const { ipcRenderer } = window.require('electron');
                 ipcRenderer.send('set-whisper-model', selectedWhisper);
+                ipcRenderer.send('set-local-engine-disabled', isLocalEngineDisabled);
             } catch {
                 console.warn('IPC not available');
             }
@@ -65,6 +78,115 @@ export function SettingsPage() {
             </header>
 
             <div className={styles.card}>
+                {/* App Connection Section */}
+                <div className={styles.section}>
+                    <div className={styles.sectionHeader}>
+                        <Database className={styles.icon} />
+                        <h2>App Connection</h2>
+                    </div>
+
+                    <p className={styles.description}>
+                        Configure the Supabase project used for your podcast library, transcripts, and vocabulary.
+                        These values are stored locally on this device.
+                    </p>
+
+                    <div className={styles.inputGroup}>
+                        <label htmlFor="supabaseUrl">Supabase URL</label>
+                        <input
+                            id="supabaseUrl"
+                            type="url"
+                            value={supabaseUrl}
+                            onChange={(e) => {
+                                setSupabaseUrl(e.target.value);
+                                setStatus('idle');
+                            }}
+                            placeholder="https://your-project.supabase.co"
+                            className={styles.input}
+                        />
+                    </div>
+
+                    <div className={styles.inputGroup}>
+                        <label htmlFor="supabaseAnonKey">Supabase Anon Key</label>
+                        <input
+                            id="supabaseAnonKey"
+                            type="password"
+                            value={supabaseAnonKey}
+                            onChange={(e) => {
+                                setSupabaseAnonKey(e.target.value);
+                                setStatus('idle');
+                            }}
+                            placeholder="eyJ..."
+                            className={styles.input}
+                        />
+                    </div>
+
+                    <div className={styles.inputGroup}>
+                        <label htmlFor="remotePassword">
+                            <Shield size={14} />
+                            Remote Access Password
+                        </label>
+                        <input
+                            id="remotePassword"
+                            type="password"
+                            value={remotePassword}
+                            onChange={(e) => {
+                                setRemotePassword(e.target.value);
+                                setStatus('idle');
+                            }}
+                            placeholder="Password required by the web access gate"
+                            className={styles.input}
+                        />
+                    </div>
+
+                    {canUseLocalFeatures && (
+                        <div className={styles.inputGroup}>
+                            <label htmlFor="localEngineMode">
+                                <Cpu size={14} />
+                                Local WhisperX Engine
+                            </label>
+                            <select
+                                id="localEngineMode"
+                                value={isLocalEngineDisabled ? 'disabled' : 'enabled'}
+                                onChange={(e) => {
+                                    setIsLocalEngineDisabled(e.target.value === 'disabled');
+                                    setStatus('idle');
+                                }}
+                                className={styles.input}
+                            >
+                                <option value="disabled">Disabled - use Gemini fallback only</option>
+                                <option value="enabled">Enabled - use local WhisperX first</option>
+                            </select>
+                        </div>
+                    )}
+
+                    <div className={styles.actions}>
+                        <button
+                            onClick={handleSave}
+                            className={styles.button}
+                            disabled={status === 'saved'}
+                        >
+                            {status === 'saved' ? (
+                                <>
+                                    <CheckCircle size={18} />
+                                    Saved
+                                </>
+                            ) : (
+                                <>
+                                    <Save size={18} />
+                                    Save Settings
+                                </>
+                            )}
+                        </button>
+
+                        {status === 'error' && (
+                            <span className={styles.error}>
+                                <AlertCircle size={16} />
+                                Please fill in Supabase URL and anon key.
+                            </span>
+                        )}
+                    </div>
+                </div>
+
                 {/* API Key Section */}
                 <div className={styles.section}>
                     <div className={styles.sectionHeader}>
@@ -106,7 +228,7 @@ export function SettingsPage() {
                             ) : (
                                 <>
                                     <Save size={18} />
-                                    Save Key
+                                    Save Settings
                                 </>
                             )}
                         </button>
@@ -114,7 +236,7 @@ export function SettingsPage() {
                         {status === 'error' && (
                             <span className={styles.error}>
                                 <AlertCircle size={16} />
-                                Please enter a valid key.
+                                Please fill in Supabase URL and anon key.
                             </span>
                         )}
                     </div>

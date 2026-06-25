@@ -10,14 +10,14 @@ import styles from './DashboardPage.module.css';
 
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
-    const [loading, setLoading] = useState(isSupabaseConfigured);
+    const [loading, setLoading] = useState(isSupabaseConfigured());
     const { apiKey, geminiModel, transcriptionPrompt } = useStore();
     const fileInputRef = useRef(null);
     const navigate = useNavigate();
 
     // Fetch podcasts on mount and subscribe to changes
     useEffect(() => {
-        if (!isSupabaseConfigured) {
+        if (!isSupabaseConfigured()) {
             return undefined;
         }
 
@@ -61,8 +61,8 @@ export function DashboardPage() {
     const handleFileSelect = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        if (!isSupabaseConfigured) {
-            alert('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.');
+        if (!isSupabaseConfigured()) {
+            alert('Supabase is not configured. Open Settings and fill in Supabase URL and anon key.');
             return;
         }
 
@@ -150,7 +150,7 @@ export function DashboardPage() {
     };
 
     if (loading) return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}><Loader className={styles.spin} /></div>;
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured()) {
         return (
             <div className="container">
                 <header className={styles.header}>
@@ -164,7 +164,7 @@ export function DashboardPage() {
                         <AlertTriangle size={48} />
                     </div>
                     <h3>Supabase is not configured</h3>
-                    <p>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your local .env file.</p>
+                    <p>Open Settings and fill in Supabase URL and anon key.</p>
                 </div>
             </div>
         );

@@ -13,7 +13,7 @@ let staticServer = null;
 let mainWindow = null;
 let whisperModel = process.env.WHISPER_MODEL || 'small';
 let pythonStopRequested = false;
-const disableLocalEngine = process.env.VITE_DISABLE_LOCAL_ENGINE === 'true';
+let localEngineDisabled = process.env.VITE_DISABLE_LOCAL_ENGINE === 'true';
 
 // Buffer logs until window is ready
 const logBuffer = [];
@@ -78,7 +78,7 @@ function sendLogToRenderer(message, type = 'info') {
 }
 
 function createPythonProcess() {
-    if (disableLocalEngine) {
+    if (localEngineDisabled) {
         backendStatus = {
             phase: 'ready',
             message: 'Local engine disabled; Gemini fallback only.',
@@ -360,7 +360,7 @@ app.whenReady().then(() => {
     });
 
     ipcMain.on('set-whisper-model', (event, model) => {
-        if (disableLocalEngine) {
+        if (localEngineDisabled) {
             sendLogToRenderer('[Electron] Ignoring Whisper model change because local engine is disabled');
             return;
         }
@@ -375,6 +375,31 @@ app.whenReady().then(() => {
         whisperModel = model;
         sendLogToRenderer(`[Electron] Applying Whisper model change: ${model}`);
         restartPythonProcess();
+    });
+
+    ipcMain.on('set-local-engine-disabled', (event, disabled) => {
+        const nextDisabled = Boolean(disabled);
+        if (nextDisabled === localEngineDisabled) return;
+
+        localEngineDisabled = nextDisabled;
+        if (localEngineDisabled) {
+            stopPythonProcess();
+            backendStatus = {
+                phase: 'ready',
+                message: 'Local engine disabled; Gemini fallback only.',
+                ready: false
+            };
+            sendLogToRenderer('[Electron] Local WhisperX engine disabled from Settings');
+            sendStatusToRenderer(backendStatus);
+        } else {
+            backendStatus = {
+                phase: 'starting',
+                message: 'Starting Python backend...',
+                ready: false
+            };
+            sendStatusToRenderer(backendStatus);
+            createPythonProcess();
+        }
     });
 
     createPythonProcess();

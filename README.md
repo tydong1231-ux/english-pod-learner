@@ -50,6 +50,8 @@ HF_TOKEN=
 
 Set `VITE_DISABLE_LOCAL_ENGINE=true` if you want to run the app with Gemini fallback only while WhisperX models are unavailable or still downloading.
 
+You can also update Supabase URL, Supabase anon key, remote access password, and local engine mode later from the in-app Settings page. Values saved there are stored locally on the current device.
+
 3. Create the Supabase tables and storage bucket.
 
 Use [docs/supabase-schema.sql](docs/supabase-schema.sql) as a starting point. The included policies are intended for a private personal deployment. Tighten them before exposing a shared or public instance.

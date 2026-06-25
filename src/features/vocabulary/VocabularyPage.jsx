@@ -6,12 +6,12 @@ import styles from './VocabularyPage.module.css';
 
 export function VocabularyPage() {
     const [words, setWords] = useState([]);
-    const [loading, setLoading] = useState(isSupabaseConfigured);
+    const [loading, setLoading] = useState(isSupabaseConfigured());
     const [filter, setFilter] = useState('');
     const [expandedId, setExpandedId] = useState(null);
 
     useEffect(() => {
-        if (!isSupabaseConfigured) {
+        if (!isSupabaseConfigured()) {
             return undefined;
         }
 
@@ -60,7 +60,7 @@ export function VocabularyPage() {
     };
 
     if (loading) return <div className="container">Loading...</div>;
-    if (!isSupabaseConfigured) {
+    if (!isSupabaseConfigured()) {
         return (
             <div className="container">
                 <header className={styles.header}>
@@ -71,7 +71,7 @@ export function VocabularyPage() {
                 </header>
                 <div className={styles.empty}>
                     <AlertTriangle size={32} />
-                    <p>Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your local .env file.</p>
+                    <p>Open Settings and fill in Supabase URL and anon key.</p>
                 </div>
             </div>
         );

@@ -2,7 +2,7 @@
 import { supabase, uploadAudio } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
 import { WhisperXService } from '../lib/whisperx';
-import { disableLocalEngine } from '../lib/env';
+import { isLocalEngineDisabled } from '../lib/runtimeConfig';
 
 // Constants for Status using Supabase Strings
 export const PodcastStatus = {
@@ -68,7 +68,7 @@ export class PodcastService {
             console.log(`Processing ${podcast.title}...`);
             let finalTranscript = null;
 
-            if (!disableLocalEngine) {
+            if (!isLocalEngineDisabled()) {
                 // Try WhisperX first
                 if (onStatusUpdate) onStatusUpdate('Checking WhisperX server...');
                 await supabase.from('podcasts').update({ progress: 'Checking WhisperX server...' }).eq('id', id);
