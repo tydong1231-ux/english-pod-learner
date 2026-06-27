@@ -21,6 +21,8 @@ import os
 import json
 import torch
 import gc
+import threading
+import traceback
 
 # Load .env file from project root
 try:
@@ -91,40 +93,83 @@ else:
 print(f"[WhisperX] Compute Type: {COMPUTE_TYPE}", flush=True)
 print(f"===================================================")
 
-print(f"[WhisperX] Loading Whisper model '{WHISPER_MODEL}'...")
-
-# Load Whisper model once at startup
-whisper_model = whisperx.load_model(
-    WHISPER_MODEL,
-    DEVICE,
-    compute_type=COMPUTE_TYPE
-)
-print("[WhisperX] Whisper model loaded!")
-
-# Load alignment model
-print("[WhisperX] Loading alignment model...")
-align_model, align_metadata = whisperx.load_align_model(
-    language_code="en",
-    device=DEVICE
-)
-print("[WhisperX] Alignment model loaded!")
-
-# Diarization pipeline (if HF token available)
+whisper_model = None
+align_model = None
+align_metadata = None
 diarize_model = None
-if HF_TOKEN:
-    try:
-        print("[WhisperX] Loading speaker diarization model...")
-        from pyannote.audio import Pipeline
-        diarize_model = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-        )
-        if DEVICE == "cuda":
-            diarize_model.to(torch.device("cuda"))
-        print("[WhisperX] Speaker diarization model loaded!")
-    except Exception as e:
-        print(f"[WhisperX] Speaker diarization not available: {e}")
-else:
-    print("[WhisperX] No HF_TOKEN set, speaker diarization disabled")
+model_load_error = None
+models_loading = False
+model_lock = threading.Lock()
+
+
+def load_models_if_needed():
+    """Load WhisperX models lazily so the HTTP service can start even offline."""
+    global whisper_model, align_model, align_metadata, diarize_model
+    global model_load_error, models_loading
+
+    if whisper_model is not None and align_model is not None:
+        return True
+
+    with model_lock:
+        if whisper_model is not None and align_model is not None:
+            return True
+
+        models_loading = True
+        model_load_error = None
+
+        try:
+            print(f"[WhisperX] Loading Whisper model '{WHISPER_MODEL}'...", flush=True)
+            whisper_model = whisperx.load_model(
+                WHISPER_MODEL,
+                DEVICE,
+                compute_type=COMPUTE_TYPE
+            )
+            print("[WhisperX] Whisper model loaded!", flush=True)
+
+            print("[WhisperX] Loading alignment model...", flush=True)
+            align_model, align_metadata = whisperx.load_align_model(
+                language_code="en",
+                device=DEVICE
+            )
+            print("[WhisperX] Alignment model loaded!", flush=True)
+
+            if HF_TOKEN:
+                try:
+                    print("[WhisperX] Loading speaker diarization model...", flush=True)
+                    from pyannote.audio import Pipeline
+                    diarize_model = Pipeline.from_pretrained(
+                        "pyannote/speaker-diarization-3.1",
+                    )
+                    if DEVICE == "cuda":
+                        diarize_model.to(torch.device("cuda"))
+                    print("[WhisperX] Speaker diarization model loaded!", flush=True)
+                except Exception as diarize_error:
+                    diarize_model = None
+                    print(f"[WhisperX] Speaker diarization not available: {diarize_error}", flush=True)
+            else:
+                print("[WhisperX] No HF_TOKEN set, speaker diarization disabled", flush=True)
+
+            return True
+        except Exception as error:
+            whisper_model = None
+            align_model = None
+            align_metadata = None
+            diarize_model = None
+            model_load_error = str(error)
+            print(f"[WhisperX] Model loading failed: {error}", flush=True)
+            traceback.print_exc()
+            return False
+        finally:
+            models_loading = False
+
+
+def model_status():
+    return {
+        "loaded": whisper_model is not None and align_model is not None,
+        "loading": models_loading,
+        "error": model_load_error,
+        "diarization": diarize_model is not None
+    }
 
 
 @app.route('/health', methods=['GET'])
@@ -135,7 +180,7 @@ def health():
         "device": DEVICE,
         "compute_type": COMPUTE_TYPE,
         "model": WHISPER_MODEL,
-        "diarization": diarize_model is not None
+        "models": model_status()
     })
 
 
@@ -151,6 +196,16 @@ def transcribe():
     - Segments with word-level timestamps and speakers
     """
     try:
+        if not load_models_if_needed():
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Local WhisperX models are not available. "
+                    "The app can still use Gemini fallback. "
+                    f"Details: {model_load_error}"
+                )
+            }), 503
+
         # Get audio file
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
@@ -264,6 +319,15 @@ def align():
     Align audio with existing transcript (legacy endpoint).
     """
     try:
+        if not load_models_if_needed():
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Local WhisperX models are not available. "
+                    f"Details: {model_load_error}"
+                )
+            }), 503
+
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
         
