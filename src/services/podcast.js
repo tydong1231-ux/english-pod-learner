@@ -1,5 +1,5 @@
 
-import { supabase, uploadAudio } from '../lib/supabase';
+import { formatSupabaseError, supabase, uploadAudio } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
 import { WhisperXService } from '../lib/whisperx';
 import { isLocalEngineDisabled } from '../lib/runtimeConfig';
@@ -30,7 +30,9 @@ export class PodcastService {
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            throw new Error(`Supabase podcast insert failed: ${formatSupabaseError(error)}`);
+        }
         return data.id;
     }
 

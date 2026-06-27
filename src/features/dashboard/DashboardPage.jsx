@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { Upload, Play, Trash2, Clock, AlertTriangle, Loader, FileAudio } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { formatSupabaseError, supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { canUseLocalFeatures } from '../../lib/env';
 import { PodcastService, PodcastStatus } from '../../services/podcast';
 import { useStore } from '../../store';
@@ -11,6 +11,7 @@ import styles from './DashboardPage.module.css';
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
     const [loading, setLoading] = useState(isSupabaseConfigured());
+    const [connectionError, setConnectionError] = useState(null);
     const { apiKey, geminiModel, transcriptionPrompt } = useStore();
     const fileInputRef = useRef(null);
     const navigate = useNavigate();
@@ -51,18 +52,22 @@ export function DashboardPage() {
 
             if (error) throw error;
             setPodcasts(data || []);
+            setConnectionError(null);
         } catch (err) {
             console.error("Error fetching podcasts:", err);
+            setConnectionError(formatSupabaseError(err));
         } finally {
             setLoading(false);
         }
     }
 
     const handleFileSelect = async (e) => {
-        const file = e.target.files[0];
+        const input = e.target;
+        const file = input.files[0];
         if (!file) return;
         if (!isSupabaseConfigured()) {
             alert('Supabase is not configured. Open Settings and fill in Supabase URL and anon key.');
+            input.value = '';
             return;
         }
 
@@ -95,7 +100,9 @@ export function DashboardPage() {
             }
         } catch (err) {
             console.error("Import failed", err);
-            alert("Failed to import file.");
+            alert(`Failed to import podcast.\n\n${formatSupabaseError(err)}\n\nOpen Settings > App Connection and click Test Connection.`);
+        } finally {
+            input.value = '';
         }
     };
 
@@ -195,7 +202,15 @@ export function DashboardPage() {
                 />
             </header>
 
-            {podcasts.length === 0 ? (
+            {connectionError ? (
+                <div className={styles.emptyState}>
+                    <div className={styles.emptyIcon}>
+                        <AlertTriangle size={48} />
+                    </div>
+                    <h3>Supabase connection failed</h3>
+                    <p>{connectionError}</p>
+                </div>
+            ) : podcasts.length === 0 ? (
                 <div className={styles.emptyState}>
                     <div className={styles.emptyIcon}>
                         <FileAudio size={48} />

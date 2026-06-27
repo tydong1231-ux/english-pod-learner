@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu } from 'lucide-react';
+import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu, Loader } from 'lucide-react';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
 import { canUseLocalFeatures } from '../../lib/env';
 import { getRuntimeConfig, saveRuntimeConfig } from '../../lib/runtimeConfig';
+import { testSupabaseConnection } from '../../lib/supabase';
 import styles from './SettingsPage.module.css';
 
 export function SettingsPage() {
@@ -19,6 +20,13 @@ export function SettingsPage() {
     const [remotePassword, setRemotePassword] = useState(runtimeConfig.remoteAccessPassword || '');
     const [isLocalEngineDisabled, setIsLocalEngineDisabled] = useState(Boolean(runtimeConfig.disableLocalEngine));
     const [status, setStatus] = useState('idle'); // idle, saving, saved, error
+    const [testStatus, setTestStatus] = useState('idle'); // idle, testing, success, error
+    const [testResult, setTestResult] = useState(null);
+
+    const resetSupabaseTest = () => {
+        setTestStatus('idle');
+        setTestResult(null);
+    };
 
     // Notify Electron when remote setting changes (auto-apply)
     useEffect(() => {
@@ -70,6 +78,30 @@ export function SettingsPage() {
         setTimeout(() => setStatus('idle'), 2000);
     };
 
+    const handleTestSupabase = async () => {
+        setTestStatus('testing');
+        setTestResult(null);
+
+        try {
+            const result = await testSupabaseConnection({
+                supabaseUrl,
+                supabaseAnonKey,
+            });
+            setTestResult(result);
+            setTestStatus(result.ok ? 'success' : 'error');
+        } catch (error) {
+            setTestResult({
+                ok: false,
+                checks: [{
+                    name: 'Connection test',
+                    ok: false,
+                    message: error?.message || String(error),
+                }],
+            });
+            setTestStatus('error');
+        }
+    };
+
     return (
         <div className="container">
             <header className={styles.header}>
@@ -99,6 +131,7 @@ export function SettingsPage() {
                             onChange={(e) => {
                                 setSupabaseUrl(e.target.value);
                                 setStatus('idle');
+                                resetSupabaseTest();
                             }}
                             placeholder="https://your-project.supabase.co"
                             className={styles.input}
@@ -114,6 +147,7 @@ export function SettingsPage() {
                             onChange={(e) => {
                                 setSupabaseAnonKey(e.target.value);
                                 setStatus('idle');
+                                resetSupabaseTest();
                             }}
                             placeholder="eyJ..."
                             className={styles.input}
@@ -178,13 +212,62 @@ export function SettingsPage() {
                             )}
                         </button>
 
+                        <button
+                            type="button"
+                            onClick={handleTestSupabase}
+                            className={styles.secondaryButton}
+                            disabled={testStatus === 'testing'}
+                        >
+                            {testStatus === 'testing' ? (
+                                <>
+                                    <Loader size={16} className={styles.spin} />
+                                    Testing
+                                </>
+                            ) : testStatus === 'success' ? (
+                                <>
+                                    <CheckCircle size={16} />
+                                    Test Passed
+                                </>
+                            ) : (
+                                <>
+                                    <RefreshCcw size={16} />
+                                    Test Connection
+                                </>
+                            )}
+                        </button>
+
                         {status === 'error' && (
                             <span className={styles.error}>
                                 <AlertCircle size={16} />
                                 Please fill in Supabase URL and anon key.
                             </span>
                         )}
+
+                        {testStatus === 'error' && (
+                            <span className={styles.error}>
+                                <AlertCircle size={16} />
+                                Supabase test failed.
+                            </span>
+                        )}
                     </div>
+
+                    {testResult && (
+                        <div className={`${styles.testResult} ${testResult.ok ? styles.testSuccess : styles.testError}`}>
+                            {testResult.checks.map((check) => (
+                                <div key={check.name} className={styles.testRow}>
+                                    {check.ok ? (
+                                        <CheckCircle size={16} className={styles.testOkIcon} />
+                                    ) : (
+                                        <AlertCircle size={16} className={styles.testErrorIcon} />
+                                    )}
+                                    <div>
+                                        <strong>{check.name}</strong>
+                                        <p>{check.message}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* API Key Section */}
