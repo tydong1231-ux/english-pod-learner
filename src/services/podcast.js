@@ -12,6 +12,40 @@ export const PodcastStatus = {
     ERROR: 'ERROR'
 };
 
+const AUDIO_DOWNLOAD_TIMEOUT_MS = 60000;
+
+function fetchWithTimeout(resource, options = {}, timeoutMs = AUDIO_DOWNLOAD_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    return fetch(resource, {
+        ...options,
+        signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+}
+
+async function downloadAudioFromSupabase(audioUrl) {
+    try {
+        const response = await fetchWithTimeout(audioUrl);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        if (!audioBlob.size) {
+            throw new Error('Downloaded audio file is empty.');
+        }
+
+        audioBlob.name = 'audio.mp3';
+        return audioBlob;
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error('Downloading audio from Supabase timed out after 60 seconds.');
+        }
+        throw new Error(`Could not download audio from Supabase public URL: ${error.message}`);
+    }
+}
+
 export class PodcastService {
     static async importPodcast(file) {
         // 1. Upload to Supabase Storage
@@ -39,17 +73,26 @@ export class PodcastService {
     /**
      * Process podcast with WhisperX (primary) or Gemini (fallback)
      */
-    static async processPodcast(id, apiKey, modelName, customPrompt, onStatusUpdate) {
+    static async processPodcast(id, apiKey, modelName, customPrompt, onStatusUpdate, sourceFile = null) {
         if (typeof customPrompt === 'function') {
             onStatusUpdate = customPrompt;
             customPrompt = '';
         }
 
         try {
-            await supabase
-                .from('podcasts')
-                .update({ status: PodcastStatus.PROCESSING, progress: 'Starting...' })
-                .eq('id', id);
+            const setProgress = async (message) => {
+                if (onStatusUpdate) onStatusUpdate(message);
+                const { error } = await supabase
+                    .from('podcasts')
+                    .update({ status: PodcastStatus.PROCESSING, progress: message, error: null })
+                    .eq('id', id);
+                if (error) {
+                    console.warn('[PodcastService] Failed to update progress:', error);
+                }
+            };
+
+            await setProgress('Starting...');
+            await setProgress('Loading podcast metadata...');
 
             // Get podcast metadata (we need audio_url)
             const { data: podcast, error: fetchError } = await supabase
@@ -60,20 +103,21 @@ export class PodcastService {
 
             if (fetchError || !podcast) throw new Error("Podcast not found");
 
-            // Fetch the file as Blob for processing (since WhisperX runs locally)
-            // Note: In Windows Electron app, we might pass the file path directly
-            const response = await fetch(podcast.audio_url);
-            const audioBlob = await response.blob();
-            // Add name property to blob to mock File object
-            audioBlob.name = 'audio.mp3';
+            let audioBlob;
+            if (sourceFile) {
+                await setProgress('Preparing selected audio file...');
+                audioBlob = sourceFile;
+            } else {
+                await setProgress('Downloading audio from Supabase...');
+                audioBlob = await downloadAudioFromSupabase(podcast.audio_url);
+            }
 
             console.log(`Processing ${podcast.title}...`);
             let finalTranscript = null;
 
             if (!isLocalEngineDisabled()) {
                 // Try WhisperX first
-                if (onStatusUpdate) onStatusUpdate('Checking WhisperX server...');
-                await supabase.from('podcasts').update({ progress: 'Checking WhisperX server...' }).eq('id', id);
+                await setProgress('Checking WhisperX server...');
 
                 // Retry WhisperX check a few times (Server might be starting up)
                 // Heavy models can take 30-40s to load on GPU
@@ -86,42 +130,35 @@ export class PodcastService {
                     if (i < MAX_RETRIES - 1) {
                         const msg = `Waiting for local engine (${i + 1}/${MAX_RETRIES})...`;
                         console.log(msg);
-                        if (onStatusUpdate) onStatusUpdate(msg);
-                        await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
+                        await setProgress(msg);
                         await new Promise(r => setTimeout(r, 2000));
                     }
                 }
 
                 if (whisperXAvailable) {
                     try {
-                        if (onStatusUpdate) onStatusUpdate('Transcribing with WhisperX...');
-                        await supabase.from('podcasts').update({ progress: 'Transcribing with WhisperX...' }).eq('id', id);
+                        await setProgress('Transcribing with WhisperX...');
 
                         finalTranscript = await WhisperXService.transcribe(audioBlob, (msg) => {
                             console.log('[WhisperX]', msg);
-                            supabase.from('podcasts').update({ progress: msg }).eq('id', id);
-                            if (onStatusUpdate) onStatusUpdate(msg);
+                            setProgress(msg);
                         });
                     } catch (whisperError) {
                         console.error('[WhisperX] Failed:', whisperError);
-                        if (onStatusUpdate) onStatusUpdate('WhisperX failed, falling back to Gemini...');
+                        await setProgress('WhisperX failed, falling back to Gemini...');
                     }
                 }
             } else {
-                const msg = 'Local engine disabled, using Gemini...';
-                if (onStatusUpdate) onStatusUpdate(msg);
-                await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
+                await setProgress('Local engine disabled, using Gemini...');
             }
 
             // Fallback to Gemini
             if (!finalTranscript || !finalTranscript.segments || finalTranscript.segments.length === 0) {
-                if (onStatusUpdate) onStatusUpdate('Transcribing with Gemini...');
-                await supabase.from('podcasts').update({ progress: 'Transcribing with Gemini...' }).eq('id', id);
+                await setProgress('Transcribing with Gemini...');
 
                 const gemini = new GeminiService(apiKey, modelName);
                 finalTranscript = await gemini.generateTranscript(audioBlob, customPrompt, async (msg) => {
-                    await supabase.from('podcasts').update({ progress: msg }).eq('id', id);
-                    if (onStatusUpdate) onStatusUpdate(msg);
+                    await setProgress(msg);
                 });
             }
 

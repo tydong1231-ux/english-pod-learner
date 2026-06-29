@@ -89,7 +89,7 @@ export function DashboardPage() {
                     }));
                 };
 
-                PodcastService.processPodcast(id, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus)
+                PodcastService.processPodcast(id, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus, file)
                     .then(() => fetchPodcasts())
                     .catch(err => {
                         console.error(err);
@@ -253,11 +253,11 @@ export function DashboardPage() {
                             </div>
 
                             <div className={styles.cardActions}>
-                                {pod.status === PodcastStatus.PENDING && canUseLocalFeatures && (
+                                {pod.status !== PodcastStatus.READY && canUseLocalFeatures && (
                                     <button
                                         className={styles.iconButton}
                                         onClick={(e) => { e.stopPropagation(); handleProcess(pod.id); }}
-                                        title="Retry Processing"
+                                        title="Start or retry processing"
                                     >
                                         <Clock size={18} />
                                     </button>
