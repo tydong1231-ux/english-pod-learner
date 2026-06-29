@@ -79,6 +79,13 @@ export function useAudioPlayer() {
         }
     }, []);
 
+    const playAudio = useCallback((audio) => {
+        return audio.play().catch(err => {
+            console.error('Play failed:', err);
+            setIsPlaying(false);
+        });
+    }, []);
+
     const togglePlay = useCallback(() => {
         const audio = audioElementRef.current;
         if (!audio) {
@@ -88,18 +95,44 @@ export function useAudioPlayer() {
 
         if (audio.paused) {
             console.log('[Audio] Attempting to play...');
-            audio.play().catch(err => console.error('Play failed:', err));
+            playAudio(audio);
         } else {
             audio.pause();
         }
-    }, []);
+    }, [playAudio]);
 
     const seek = useCallback((time) => {
         const audio = audioElementRef.current;
         if (audio) {
+            const shouldResume = !audio.paused;
             audio.currentTime = Math.max(0, Math.min(time, audio.duration || Infinity));
+            setCurrentTime(audio.currentTime);
+
+            if (shouldResume) {
+                const resume = () => playAudio(audio);
+                if (audio.readyState >= 3) {
+                    resume();
+                } else {
+                    audio.addEventListener('canplay', resume, { once: true });
+                }
+            }
         }
-    }, []);
+    }, [playAudio]);
+
+    const playFrom = useCallback((time) => {
+        const audio = audioElementRef.current;
+        if (!audio) return;
+
+        audio.currentTime = Math.max(0, Math.min(time, audio.duration || Infinity));
+        setCurrentTime(audio.currentTime);
+
+        const playWhenReady = () => playAudio(audio);
+        if (audio.readyState >= 3) {
+            playWhenReady();
+        } else {
+            audio.addEventListener('canplay', playWhenReady, { once: true });
+        }
+    }, [playAudio]);
 
     return {
         audioRef,
@@ -108,6 +141,7 @@ export function useAudioPlayer() {
         duration,
         togglePlay,
         seek,
+        playFrom,
         checkDuration,
     };
 }

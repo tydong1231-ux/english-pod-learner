@@ -185,6 +185,11 @@
     font-size: 0.9rem;
 }
 
+.cacheSummary {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
 .testResult {
     margin-top: 1rem;
     padding: 1rem;

@@ -9,10 +9,14 @@ create table if not exists public.podcasts (
   title text not null,
   status text not null default 'PENDING',
   audio_url text not null,
+  folder text not null default 'Inbox',
   progress text,
   error text,
   created_at timestamptz not null default now()
 );
+
+alter table public.podcasts
+add column if not exists folder text not null default 'Inbox';
 
 create table if not exists public.transcripts (
   podcast_id uuid primary key references public.podcasts(id) on delete cascade,
@@ -34,6 +38,7 @@ create table if not exists public.vocabulary (
 );
 
 create index if not exists podcasts_created_at_idx on public.podcasts(created_at desc);
+create index if not exists podcasts_folder_idx on public.podcasts(folder);
 create index if not exists vocabulary_created_at_idx on public.vocabulary(created_at desc);
 create index if not exists vocabulary_word_idx on public.vocabulary(word);
 

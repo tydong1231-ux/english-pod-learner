@@ -8,6 +8,13 @@ db.version(1).stores({
   vocabulary: '++id, word, sourcePodcastId, createdAt'
 });
 
+db.version(2).stores({
+  podcasts: '++id, title, status, createdAt',
+  transcripts: 'podcastId',
+  vocabulary: '++id, word, sourcePodcastId, createdAt',
+  audioCache: 'podcastId, sourceUrl, createdAt'
+});
+
 export const PodcastStatus = {
   PENDING: 'PENDING',
   PROCESSING: 'PROCESSING',

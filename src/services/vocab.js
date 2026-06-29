@@ -1,10 +1,11 @@
 
 import { supabase } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
+import { OpenAIVocabService } from '../lib/openaiVocab';
 
 export class VocabService {
-    static async createVocabCard(word, contextSentence, sourcePodcastId, apiKey) {
-        if (!word || !contextSentence || !apiKey) throw new Error("Missing requirements");
+    static async createVocabCard(word, contextSentence, sourcePodcastId, apiKey, options = {}) {
+        if (!word || !contextSentence) throw new Error("Missing requirements");
 
         const cleanWord = word
             .trim()
@@ -23,14 +24,26 @@ export class VocabService {
 
         if (existing) return existing;
 
-        const gemini = new GeminiService(apiKey);
+        const provider = options.provider || 'gemini';
         let cardData;
         try {
-            cardData = await gemini.generateVocabCard(cleanWord, contextSentence);
-            console.log('[VocabService] Gemini returned:', cardData);
+            if (provider === 'openai') {
+                const openai = new OpenAIVocabService({
+                    apiKey: options.openaiApiKey,
+                    baseUrl: options.openaiBaseUrl,
+                    model: options.openaiModel,
+                });
+                cardData = await openai.generateVocabCard(cleanWord, contextSentence);
+                console.log('[VocabService] OpenAI-compatible provider returned:', cardData);
+            } else {
+                if (!apiKey) throw new Error('Gemini API key is required');
+                const gemini = new GeminiService(apiKey);
+                cardData = await gemini.generateVocabCard(cleanWord, contextSentence);
+                console.log('[VocabService] Gemini returned:', cardData);
+            }
         } catch (err) {
-            console.error('[VocabService] Gemini API error:', err);
-            throw new Error(`Gemini API failed: ${err.message}`);
+            console.error('[VocabService] Vocabulary API error:', err);
+            throw new Error(`Vocabulary API failed: ${err.message}`);
         }
 
         // Prepare insert data

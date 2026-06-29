@@ -28,6 +28,19 @@ export const useStore = create(
             geminiModel: 'gemini-2.0-flash-exp', // Default to 2.0 Flash Exp for balance
             setGeminiModel: (m) => set({ geminiModel: m }),
 
+            // Vocabulary AI provider
+            vocabProvider: 'gemini',
+            setVocabProvider: (provider) => set({ vocabProvider: provider }),
+
+            openaiApiKey: '',
+            setOpenaiApiKey: (key) => set({ openaiApiKey: key }),
+
+            openaiBaseUrl: 'https://api.openai.com/v1',
+            setOpenaiBaseUrl: (url) => set({ openaiBaseUrl: url }),
+
+            openaiModel: 'gpt-4o-mini',
+            setOpenaiModel: (model) => set({ openaiModel: model }),
+
             // Whisper Model
             whisperModel: 'small', // Options: small, medium
             setWhisperModel: (m) => set({ whisperModel: m }),
@@ -42,6 +55,10 @@ export const useStore = create(
                 apiKey: state.apiKey,
                 transcriptionPrompt: state.transcriptionPrompt,
                 geminiModel: state.geminiModel,
+                vocabProvider: state.vocabProvider,
+                openaiApiKey: state.openaiApiKey,
+                openaiBaseUrl: state.openaiBaseUrl,
+                openaiModel: state.openaiModel,
                 whisperModel: state.whisperModel,
                 remoteAccessEnabled: state.remoteAccessEnabled
             }),

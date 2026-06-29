@@ -13,6 +13,7 @@ export const PodcastStatus = {
 };
 
 const AUDIO_DOWNLOAD_TIMEOUT_MS = 60000;
+const DEFAULT_FOLDER = 'Inbox';
 
 function fetchWithTimeout(resource, options = {}, timeoutMs = AUDIO_DOWNLOAD_TIMEOUT_MS) {
     const controller = new AbortController();
@@ -47,27 +48,58 @@ async function downloadAudioFromSupabase(audioUrl) {
 }
 
 export class PodcastService {
-    static async importPodcast(file) {
+    static async importPodcast(file, options = {}) {
+        const folder = normalizeFolder(options.folder);
         // 1. Upload to Supabase Storage
         console.log('Uploading to Supabase Storage...');
         const audioUrl = await uploadAudio(file);
 
         // 2. Insert into Podcasts Table
-        const { data, error } = await supabase
+        const insertData = {
+            title: file.name,
+            status: PodcastStatus.PENDING,
+            audio_url: audioUrl,
+            folder,
+        };
+
+        let { data, error } = await supabase
             .from('podcasts')
-            .insert({
-                title: file.name,
-                status: PodcastStatus.PENDING,
-                audio_url: audioUrl,
-                // duration: null, // Will be updated later
-            })
+            .insert(insertData)
             .select()
             .single();
+
+        if (error && isMissingFolderColumnError(error)) {
+            const fallback = await supabase
+                .from('podcasts')
+                .insert({
+                    title: file.name,
+                    status: PodcastStatus.PENDING,
+                    audio_url: audioUrl,
+                })
+                .select()
+                .single();
+            data = fallback.data;
+            error = fallback.error;
+        }
 
         if (error) {
             throw new Error(`Supabase podcast insert failed: ${formatSupabaseError(error)}`);
         }
         return data.id;
+    }
+
+    static async updatePodcastFolder(id, folder) {
+        const { error } = await supabase
+            .from('podcasts')
+            .update({ folder: normalizeFolder(folder) })
+            .eq('id', id);
+
+        if (error) {
+            if (isMissingFolderColumnError(error)) {
+                throw new Error('The podcasts.folder column is missing. Run docs/supabase-schema.sql in Supabase SQL Editor.');
+            }
+            throw error;
+        }
     }
 
     /**
@@ -226,4 +258,14 @@ export class PodcastService {
 
         if (error) throw error;
     }
+}
+
+export function normalizeFolder(folder) {
+    const value = (folder || '').trim();
+    return value || DEFAULT_FOLDER;
+}
+
+function isMissingFolderColumnError(error) {
+    const message = `${error?.message || ''} ${error?.details || ''}`;
+    return message.includes('folder') && (message.includes('Could not find') || message.includes('schema cache') || message.includes('column'));
 }

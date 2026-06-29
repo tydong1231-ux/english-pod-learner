@@ -7,6 +7,7 @@ import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
+import { getCachedAudioUrl } from '../../lib/audioCache';
 
 import styles from './PlayerPage.module.css';
 
@@ -19,10 +20,12 @@ export function PlayerPage() {
     const [transcriptRecord, setTranscriptRecord] = useState(null);
     const [loading, setLoading] = useState(isSupabaseConfigured());
 
-    const { audioRef, isPlaying, togglePlay, seek, currentTime, duration, checkDuration } = useAudioPlayer();
-    const { apiKey } = useStore();
+    const { audioRef, isPlaying, togglePlay, seek, playFrom, currentTime, duration, checkDuration } = useAudioPlayer();
+    const { apiKey, vocabProvider, openaiApiKey, openaiBaseUrl, openaiModel } = useStore();
 
     const [audioUrl, setAudioUrl] = useState(null);
+    const [audioStatus, setAudioStatus] = useState('');
+    const [audioError, setAudioError] = useState('');
     const [loadingVocab, setLoadingVocab] = useState(false);
     const [vocabCard, setVocabCard] = useState(null);
 
@@ -49,7 +52,6 @@ export function PlayerPage() {
 
                 if (podError) throw podError;
                 setPodcast(pod);
-                setAudioUrl(pod.audio_url);
 
                 // Get Transcript
                 const { data: trans } = await supabase
@@ -73,6 +75,47 @@ export function PlayerPage() {
         fetchData();
     }, [id]);
 
+    useEffect(() => {
+        if (!podcast?.audio_url) return undefined;
+
+        let cancelled = false;
+        let revokeCurrent = () => { };
+
+        async function prepareAudio() {
+            setAudioStatus('Preparing audio...');
+            setAudioError('');
+
+            try {
+                const result = await getCachedAudioUrl(podcast.id, podcast.audio_url, (message) => {
+                    if (!cancelled) setAudioStatus(message);
+                });
+
+                if (cancelled) {
+                    result.revoke();
+                    return;
+                }
+
+                revokeCurrent = result.revoke;
+                setAudioUrl(result.url);
+                setAudioStatus(result.cached ? 'Ready from local cache.' : 'Ready.');
+            } catch (error) {
+                console.warn('[AudioCache] Falling back to remote audio URL:', error);
+                if (!cancelled) {
+                    setAudioUrl(podcast.audio_url);
+                    setAudioError(`Local cache failed: ${error.message}`);
+                    setAudioStatus('Using remote audio.');
+                }
+            }
+        }
+
+        prepareAudio();
+
+        return () => {
+            cancelled = true;
+            revokeCurrent();
+        };
+    }, [podcast]);
+
     // When audio URL changes, wait a bit then check duration
     useEffect(() => {
         if (audioUrl) {
@@ -91,8 +134,13 @@ export function PlayerPage() {
     };
 
     const handleWordClick = async (wordObj, sentence) => {
-        if (!apiKey) {
-            alert("Please set API key to generate vocabulary.");
+        if (vocabProvider === 'openai' && !openaiApiKey) {
+            alert("Please set OpenAI-compatible API key to generate vocabulary.");
+            return;
+        }
+
+        if (vocabProvider !== 'openai' && !apiKey) {
+            alert("Please set Gemini API key to generate vocabulary.");
             return;
         }
 
@@ -109,7 +157,12 @@ export function PlayerPage() {
 
         try {
             const wordText = typeof wordObj === 'string' ? wordObj : wordObj.word;
-            const card = await VocabService.createVocabCard(wordText, sentence, id, apiKey); // Pass string ID
+            const card = await VocabService.createVocabCard(wordText, sentence, id, apiKey, {
+                provider: vocabProvider,
+                openaiApiKey,
+                openaiBaseUrl,
+                openaiModel,
+            });
             setVocabCard(card);
         } catch (err) {
             console.error(err);
@@ -146,6 +199,16 @@ export function PlayerPage() {
                         Status: {podcast.status} |
                         Dur: {formatTime(duration)}
                     </span>
+                    {audioStatus && (
+                        <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                            {audioStatus}
+                        </span>
+                    )}
+                    {audioError && (
+                        <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                            {audioError}
+                        </span>
+                    )}
                 </div>
             </header>
 
@@ -156,6 +219,7 @@ export function PlayerPage() {
                             transcript={transcriptRecord}
                             currentTime={currentTime}
                             onSeek={seek}
+                            onPlaySegment={playFrom}
                             onWordClick={handleWordClick}
                         />
                     ) : (

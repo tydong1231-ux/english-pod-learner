@@ -1,18 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu, Loader } from 'lucide-react';
+import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu, Loader, Trash2, HardDrive } from 'lucide-react';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
 import { canUseLocalFeatures } from '../../lib/env';
 import { getRuntimeConfig, saveRuntimeConfig } from '../../lib/runtimeConfig';
 import { testSupabaseConnection } from '../../lib/supabase';
+import { clearAudioCache, getAudioCacheStats } from '../../lib/audioCache';
 import styles from './SettingsPage.module.css';
 
 export function SettingsPage() {
-    const { apiKey, setApiKey, transcriptionPrompt, setTranscriptionPrompt, geminiModel, setGeminiModel, whisperModel, setWhisperModel, remoteAccessEnabled, setRemoteAccessEnabled } = useStore();
+    const {
+        apiKey,
+        setApiKey,
+        transcriptionPrompt,
+        setTranscriptionPrompt,
+        geminiModel,
+        setGeminiModel,
+        vocabProvider,
+        setVocabProvider,
+        openaiApiKey,
+        setOpenaiApiKey,
+        openaiBaseUrl,
+        setOpenaiBaseUrl,
+        openaiModel,
+        setOpenaiModel,
+        whisperModel,
+        setWhisperModel,
+        remoteAccessEnabled,
+        setRemoteAccessEnabled
+    } = useStore();
     const runtimeConfig = getRuntimeConfig();
     const [inputKey, setInputKey] = useState(apiKey || '');
     const [inputPrompt, setInputPrompt] = useState(transcriptionPrompt || '');
     const [selectedModel, setSelectedModel] = useState(geminiModel || 'gemini-2.0-flash-exp');
+    const [selectedVocabProvider, setSelectedVocabProvider] = useState(vocabProvider || 'gemini');
+    const [inputOpenaiKey, setInputOpenaiKey] = useState(openaiApiKey || '');
+    const [inputOpenaiBaseUrl, setInputOpenaiBaseUrl] = useState(openaiBaseUrl || 'https://api.openai.com/v1');
+    const [inputOpenaiModel, setInputOpenaiModel] = useState(openaiModel || 'gpt-4o-mini');
     const [selectedWhisper, setSelectedWhisper] = useState(whisperModel || 'small');
     const [isRemoteEnabled, setIsRemoteEnabled] = useState(Boolean(remoteAccessEnabled));
     const [supabaseUrl, setSupabaseUrl] = useState(runtimeConfig.supabaseUrl || '');
@@ -22,6 +46,8 @@ export function SettingsPage() {
     const [status, setStatus] = useState('idle'); // idle, saving, saved, error
     const [testStatus, setTestStatus] = useState('idle'); // idle, testing, success, error
     const [testResult, setTestResult] = useState(null);
+    const [cacheStats, setCacheStats] = useState({ count: 0, label: '0 MB' });
+    const [cacheStatus, setCacheStatus] = useState('idle');
 
     const resetSupabaseTest = () => {
         setTestStatus('idle');
@@ -42,6 +68,29 @@ export function SettingsPage() {
         }
     }, [isRemoteEnabled]);
 
+    async function refreshCacheStats() {
+        try {
+            setCacheStats(await getAudioCacheStats());
+        } catch {
+            setCacheStats({ count: 0, label: '0 MB' });
+        }
+    }
+
+    useEffect(() => {
+        let cancelled = false;
+        getAudioCacheStats()
+            .then((stats) => {
+                if (!cancelled) setCacheStats(stats);
+            })
+            .catch(() => {
+                if (!cancelled) setCacheStats({ count: 0, label: '0 MB' });
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
     const handleSave = () => {
         if (!supabaseUrl.trim() || !supabaseAnonKey.trim()) {
             setStatus('error');
@@ -56,6 +105,10 @@ export function SettingsPage() {
         setApiKey(inputKey.trim());
         setTranscriptionPrompt(inputPrompt ? inputPrompt.trim() : '');
         setGeminiModel(selectedModel);
+        setVocabProvider(selectedVocabProvider);
+        setOpenaiApiKey(inputOpenaiKey.trim());
+        setOpenaiBaseUrl(inputOpenaiBaseUrl.trim() || 'https://api.openai.com/v1');
+        setOpenaiModel(inputOpenaiModel.trim() || 'gpt-4o-mini');
         setWhisperModel(selectedWhisper);
         setRemoteAccessEnabled(isRemoteEnabled);
         saveRuntimeConfig({
@@ -99,6 +152,18 @@ export function SettingsPage() {
                 }],
             });
             setTestStatus('error');
+        }
+    };
+
+    const handleClearAudioCache = async () => {
+        setCacheStatus('clearing');
+        try {
+            await clearAudioCache();
+            await refreshCacheStats();
+            setCacheStatus('cleared');
+            setTimeout(() => setCacheStatus('idle'), 2000);
+        } catch {
+            setCacheStatus('error');
         }
     };
 
@@ -355,6 +420,85 @@ export function SettingsPage() {
                     </div>
                 </div>
 
+                <div className={styles.section}>
+                    <div className={styles.sectionHeader}>
+                        <Key className={styles.icon} />
+                        <h2>Vocabulary Provider</h2>
+                    </div>
+                    <p className={styles.description}>
+                        Choose the model provider used when clicking transcript words to create vocabulary cards.
+                        OpenAI-compatible mode uses the Chat Completions request format.
+                    </p>
+                    <div className={styles.inputGroup}>
+                        <label>Provider</label>
+                        <select
+                            value={selectedVocabProvider}
+                            onChange={(e) => { setSelectedVocabProvider(e.target.value); setStatus('idle'); }}
+                            className={styles.input}
+                        >
+                            <option value="gemini">Gemini</option>
+                            <option value="openai">OpenAI Compatible</option>
+                        </select>
+                    </div>
+
+                    {selectedVocabProvider === 'openai' && (
+                        <>
+                            <div className={styles.inputGroup}>
+                                <label htmlFor="openaiApiKey">OpenAI Compatible API Key</label>
+                                <input
+                                    id="openaiApiKey"
+                                    type="password"
+                                    value={inputOpenaiKey}
+                                    onChange={(e) => { setInputOpenaiKey(e.target.value); setStatus('idle'); }}
+                                    placeholder="sk-..."
+                                    className={styles.input}
+                                />
+                            </div>
+                            <div className={styles.inputGroup}>
+                                <label htmlFor="openaiBaseUrl">Base URL</label>
+                                <input
+                                    id="openaiBaseUrl"
+                                    type="url"
+                                    value={inputOpenaiBaseUrl}
+                                    onChange={(e) => { setInputOpenaiBaseUrl(e.target.value); setStatus('idle'); }}
+                                    placeholder="https://api.openai.com/v1"
+                                    className={styles.input}
+                                />
+                            </div>
+                            <div className={styles.inputGroup}>
+                                <label htmlFor="openaiModel">Model</label>
+                                <input
+                                    id="openaiModel"
+                                    value={inputOpenaiModel}
+                                    onChange={(e) => { setInputOpenaiModel(e.target.value); setStatus('idle'); }}
+                                    placeholder="gpt-4o-mini"
+                                    className={styles.input}
+                                />
+                            </div>
+                        </>
+                    )}
+
+                    <div className={styles.actions}>
+                        <button
+                            onClick={handleSave}
+                            className={styles.button}
+                            disabled={status === 'saved'}
+                        >
+                            {status === 'saved' ? (
+                                <>
+                                    <CheckCircle size={18} />
+                                    Saved
+                                </>
+                            ) : (
+                                <>
+                                    <Save size={18} />
+                                    Save Settings
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+
                 {/* Whisper Model Section - Hide in Web Mode */}
                 {canUseLocalFeatures && (
                     <div className={styles.section}>
@@ -400,6 +544,52 @@ export function SettingsPage() {
                                 <option value="disabled">Disabled (Local Only)</option>
                                 <option value="enabled">Enabled (Remote Access)</option>
                             </select>
+                        </div>
+                    </div>
+                )}
+
+                {canUseLocalFeatures && (
+                    <div className={styles.section}>
+                        <div className={styles.sectionHeader}>
+                            <HardDrive className={styles.icon} />
+                            <h2>Local Audio Cache</h2>
+                        </div>
+                        <p className={styles.description}>
+                            Audio files are cached locally for smoother seeking and playback.
+                        </p>
+                        <div className={styles.actions}>
+                            <button
+                                type="button"
+                                onClick={handleClearAudioCache}
+                                className={styles.secondaryButton}
+                                disabled={cacheStatus === 'clearing' || cacheStats.count === 0}
+                            >
+                                {cacheStatus === 'clearing' ? (
+                                    <>
+                                        <Loader size={16} className={styles.spin} />
+                                        Clearing
+                                    </>
+                                ) : cacheStatus === 'cleared' ? (
+                                    <>
+                                        <CheckCircle size={16} />
+                                        Cleared
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 size={16} />
+                                        Clear Cache
+                                    </>
+                                )}
+                            </button>
+                            <span className={styles.cacheSummary}>
+                                {cacheStats.count} files, {cacheStats.label}
+                            </span>
+                            {cacheStatus === 'error' && (
+                                <span className={styles.error}>
+                                    <AlertCircle size={16} />
+                                    Failed to clear cache.
+                                </span>
+                            )}
                         </div>
                     </div>
                 )}

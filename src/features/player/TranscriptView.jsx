@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
+import { Play } from 'lucide-react';
 import styles from './TranscriptView.module.css';
 
-export function TranscriptView({ transcript, currentTime, onSeek, onWordClick }) {
+export function TranscriptView({ transcript, currentTime, onSeek, onPlaySegment, onWordClick }) {
     const activeRef = useRef(null);
     const containerRef = useRef(null);
 
@@ -33,6 +34,21 @@ export function TranscriptView({ transcript, currentTime, onSeek, onWordClick })
                     >
                         <div className={styles.segmentHeader}>
                             <div className={styles.time}>{formatTime(segment.start)}</div>
+                            <button
+                                type="button"
+                                className={styles.playSegmentButton}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onPlaySegment) {
+                                        onPlaySegment(segment.start || 0);
+                                    } else {
+                                        onSeek(segment.start || 0);
+                                    }
+                                }}
+                                title="Play from this sentence"
+                            >
+                                <Play size={13} fill="currentColor" />
+                            </button>
                             {segment.speaker && (
                                 <div className={styles.speaker}>{segment.speaker}</div>
                             )}

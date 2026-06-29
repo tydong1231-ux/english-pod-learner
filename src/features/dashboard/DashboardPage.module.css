@@ -25,6 +25,88 @@
     background-color: var(--color-primary-hover);
 }
 
+.importButton:disabled {
+    opacity: 0.75;
+    cursor: default;
+}
+
+.libraryControls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.75rem;
+    align-items: end;
+    margin: -0.75rem 0 1.5rem;
+}
+
+.controlGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.controlGroup label {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.controlGroup select,
+.controlGroup input {
+    width: 100%;
+    min-height: 38px;
+    padding: 0.5rem 0.65rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    color: var(--text-main);
+}
+
+.inlineControl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.4rem;
+}
+
+.inlineControl button {
+    min-width: 54px;
+    border-radius: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
+}
+
+.inlineControl button:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.operationStatus {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: -1rem 0 1.5rem;
+}
+
+.statusLine {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.statusLine[data-status="success"] {
+    color: #10b981;
+}
+
+.statusLine[data-status="error"] {
+    color: #ef4444;
+}
+
 .emptyState {
     display: flex;
     flex-direction: column;
@@ -98,6 +180,7 @@
     gap: 0.75rem;
     font-size: 0.85rem;
     color: var(--text-muted);
+    flex-wrap: wrap;
 }
 
 .statusBadge {
@@ -105,6 +188,17 @@
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
     background-color: var(--bg-app);
+    font-size: 0.75rem;
+}
+
+.folderSelect {
+    max-width: 130px;
+    min-height: 26px;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-app);
+    color: var(--text-muted);
     font-size: 0.75rem;
 }
 
@@ -178,6 +272,13 @@
 .iconButton:hover {
     background-color: var(--bg-app);
     color: #ef4444;
+}
+
+.iconButton:disabled,
+.confirmBtn:disabled,
+.cancelBtn:disabled {
+    opacity: 0.65;
+    cursor: default;
 }
 
 .card:hover .iconButton {

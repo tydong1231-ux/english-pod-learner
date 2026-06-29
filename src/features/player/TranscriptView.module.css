@@ -31,6 +31,7 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    min-height: 24px;
 }
 
 .time {
@@ -47,6 +48,31 @@
     padding: 2px 8px;
     background-color: rgba(6, 182, 212, 0.15);
     border-radius: 4px;
+}
+
+.playSegmentButton {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: opacity 0.18s, transform 0.18s, color 0.18s;
+}
+
+.segment:hover .playSegmentButton,
+.playSegmentButton:focus-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.playSegmentButton:hover {
+    color: var(--color-primary);
 }
 
 .text {

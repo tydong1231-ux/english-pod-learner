@@ -127,6 +127,14 @@ export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {
         return { message: 'Can read podcasts, transcripts, and vocabulary.' };
     });
 
+    await addCheck('Folder column', async () => {
+        const { error } = await client
+            .from('podcasts')
+            .select('folder', { count: 'exact', head: true });
+        if (error) throw error;
+        return { message: 'podcasts.folder is available for library grouping.' };
+    });
+
     await addCheck('Storage bucket', async () => {
         testFilePath = `connection-test-${Date.now()}.txt`;
         const file = new Blob(['podfluent connection test'], { type: 'text/plain' });
