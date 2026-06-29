@@ -34,6 +34,13 @@ export function LogViewer({ defaultCollapsed = true }) {
 
         ipcRenderer.on('server-log', handleLog);
         ipcRenderer.on('backend-status', handleStatus);
+        ipcRenderer.invoke('get-backend-status')
+            .then((status) => {
+                if (status) setBackendStatus(status);
+            })
+            .catch(() => {
+                // Older builds may not expose this helper yet.
+            });
 
         return () => {
             ipcRenderer.removeListener('server-log', handleLog);

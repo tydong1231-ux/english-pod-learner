@@ -49,6 +49,64 @@ function sendStatusToRenderer(status) {
     }
 }
 
+function checkBackendHealth() {
+    return new Promise((resolve) => {
+        const request = http.get('http://localhost:8765/health', { timeout: 2000 }, (response) => {
+            let body = '';
+            response.on('data', (chunk) => {
+                body += chunk.toString();
+            });
+            response.on('end', () => {
+                if (response.statusCode !== 200) {
+                    resolve(false);
+                    return;
+                }
+
+                try {
+                    const health = JSON.parse(body);
+                    resolve(health.status === 'ok');
+                } catch {
+                    resolve(false);
+                }
+            });
+        });
+
+        request.on('timeout', () => {
+            request.destroy();
+            resolve(false);
+        });
+        request.on('error', () => resolve(false));
+    });
+}
+
+function startBackendHealthPolling() {
+    let attempts = 0;
+    const maxAttempts = 90;
+    const interval = setInterval(async () => {
+        if (localEngineDisabled || backendStatus.ready || backendStatus.phase === 'error') {
+            clearInterval(interval);
+            return;
+        }
+
+        attempts += 1;
+        const isHealthy = await checkBackendHealth();
+        if (isHealthy) {
+            backendStatus = {
+                phase: 'ready',
+                message: 'Backend ready!',
+                ready: true
+            };
+            sendStatusToRenderer(backendStatus);
+            clearInterval(interval);
+            return;
+        }
+
+        if (attempts >= maxAttempts) {
+            clearInterval(interval);
+        }
+    }, 1000);
+}
+
 function sendLogToRenderer(message, type = 'info') {
     const logEntry = { message, type };
 
@@ -134,6 +192,7 @@ function createPythonProcess() {
     });
 
     sendLogToRenderer(`[Electron] Python process spawned with PID: ${pythonProcess.pid}`);
+    startBackendHealthPolling();
 
     pythonProcess.stdout.on('data', data => sendLogToRenderer(data.toString()));
     pythonProcess.stderr.on('data', data => sendLogToRenderer(data.toString(), 'error'));
@@ -336,6 +395,7 @@ function createWindow() {
     mainWindow.webContents.on('did-finish-load', () => {
         windowReady = true;
         sendLogToRenderer('[Electron] Window loaded, flushing buffered logs...');
+        sendStatusToRenderer(backendStatus);
     });
 
     // Handle external links in default browser
@@ -401,6 +461,8 @@ app.whenReady().then(() => {
             createPythonProcess();
         }
     });
+
+    ipcMain.handle('get-backend-status', () => backendStatus);
 
     createPythonProcess();
     createWindow();
