@@ -15,27 +15,46 @@ For speaker diarization, you need a HuggingFace token with access to:
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import whisperx
 import tempfile
 import os
 import json
-import torch
 import gc
 import threading
 import traceback
 
-# Load .env file from project root
+
+def find_env_file():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(script_dir, '..', '.env'),
+        os.path.join(script_dir, '..', '..', '.env'),
+        os.path.join(script_dir, '..', '..', '..', '.env'),
+        os.path.join(script_dir, '..', '..', '..', '..', '.env'),
+        os.path.join(os.getcwd(), '.env'),
+    ]
+
+    for candidate in candidates:
+        env_path = os.path.abspath(candidate)
+        if os.path.exists(env_path):
+            return env_path
+    return None
+
+
+# Load .env before importing WhisperX/HuggingFace libraries. huggingface_hub reads
+# HF_ENDPOINT during import, so late loading leaves it stuck on huggingface.co.
 try:
     from dotenv import load_dotenv
-    # Look for .env in parent directory (project root)
-    env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-    if os.path.exists(env_path):
+    env_path = find_env_file()
+    if env_path:
         load_dotenv(env_path)
         print(f"[ENV] Loaded .env from {env_path}")
     else:
-        print(f"[ENV] No .env found at {env_path}")
+        print("[ENV] No .env file found")
 except ImportError:
     print("[ENV] python-dotenv not installed, using system env only")
+
+import whisperx
+import torch
 
 # PyTorch 2.6+ compatibility: patch torch.load to ALWAYS use weights_only=False
 # This is needed because whisperx/pyannote models contain complex configs
@@ -74,6 +93,7 @@ WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")  # Options: tiny, base,
 # Get token from: https://huggingface.co/settings/tokens
 # Accept terms for: pyannote/speaker-diarization-3.1 and pyannote/segmentation-3.0
 HF_TOKEN = os.environ.get("HF_TOKEN", None)
+HF_ENDPOINT = os.environ.get("HF_ENDPOINT", None)
 
 print(f"===================================================")
 print(f"[WhisperX] Initializing Engine...")
@@ -91,6 +111,8 @@ else:
     print(f"[WhisperX] WARNING: Running on CPU. This will be slow.", flush=True)
     print(f"[WhisperX] If you have a GPU, ensure PyTorch with CUDA support is installed.", flush=True)
 print(f"[WhisperX] Compute Type: {COMPUTE_TYPE}", flush=True)
+if HF_ENDPOINT:
+    print(f"[WhisperX] HuggingFace Endpoint: {HF_ENDPOINT}", flush=True)
 print(f"===================================================")
 
 whisper_model = None
@@ -238,12 +260,20 @@ def transcribe():
             )
             print(f"[WhisperX] Alignment complete: {len(result['segments'])} segments")
             
-            # Step 3: Speaker diarization (if available)
+            # Step 3: Speaker diarization (if available). This is optional:
+            # pyannote can fail when torchcodec/FFmpeg backends are mismatched,
+            # but transcription and word alignment should still succeed.
+            diarization_succeeded = False
             if diarize_model:
-                print("[WhisperX] Running speaker diarization...")
-                diarize_segments = diarize_model(audio_path)
-                result = whisperx.assign_word_speakers(diarize_segments, result)
-                print("[WhisperX] Speaker diarization complete")
+                try:
+                    print("[WhisperX] Running speaker diarization...")
+                    diarize_segments = diarize_model(audio_path)
+                    result = whisperx.assign_word_speakers(diarize_segments, result)
+                    diarization_succeeded = True
+                    print("[WhisperX] Speaker diarization complete")
+                except Exception as diarize_error:
+                    print(f"[WhisperX] Speaker diarization failed, continuing without speakers: {diarize_error}", flush=True)
+                    traceback.print_exc()
             
             # Format response
             segments = []
@@ -269,7 +299,7 @@ def transcribe():
                     segments.append(formatted_seg)
             
             # Merge consecutive segments from the same speaker into paragraphs
-            if diarize_model and len(segments) > 0:
+            if diarization_succeeded and len(segments) > 0:
                 print("[WhisperX] Merging consecutive speaker segments...")
                 merged = []
                 current = segments[0].copy()
@@ -308,7 +338,6 @@ def transcribe():
             
     except Exception as e:
         print(f"[WhisperX] Error: {str(e)}")
-        import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 

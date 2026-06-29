@@ -4,7 +4,35 @@ const cp = require('child_process');
 const http = require('http');
 const fs = require('fs');
 const url = require('url');
-require('dotenv').config();
+const dotenv = require('dotenv');
+
+function loadDotenv() {
+    const candidates = [
+        path.join(process.cwd(), '.env'),
+        path.join(process.cwd(), '..', '.env'),
+        path.join(process.cwd(), '..', '..', '.env'),
+        path.join(__dirname, '..', '.env'),
+        path.join(__dirname, '..', '..', '.env'),
+        path.join(process.resourcesPath || '', '..', '..', '..', '.env')
+    ];
+    const seen = new Set();
+
+    for (const candidate of candidates) {
+        const envPath = path.resolve(candidate);
+        if (seen.has(envPath)) continue;
+        seen.add(envPath);
+
+        if (fs.existsSync(envPath)) {
+            dotenv.config({ path: envPath });
+            console.log(`[ENV] Loaded .env from ${envPath}`);
+            return;
+        }
+    }
+
+    dotenv.config();
+}
+
+loadDotenv();
 
 const isDev = !app.isPackaged;
 let pythonProcess = null;
