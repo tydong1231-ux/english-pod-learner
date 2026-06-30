@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { PasswordGate } from './components/PasswordGate';
@@ -6,8 +7,23 @@ import { PlayerPage } from './features/player/PlayerPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { VocabularyPage } from './features/vocabulary/VocabularyPage';
 import { isRemoteAccess } from './lib/env';
+import { loadRuntimeEnvConfig } from './lib/runtimeConfig';
 
 function App() {
+  const [configReady, setConfigReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadRuntimeEnvConfig().finally(() => {
+      if (!cancelled) setConfigReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!configReady) return null;
+
   const content = (
     <Routes>
       <Route path="/" element={<Layout />}>

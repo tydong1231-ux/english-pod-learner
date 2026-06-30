@@ -6,6 +6,8 @@ const fs = require('fs');
 const url = require('url');
 const dotenv = require('dotenv');
 
+let loadedEnvPath = null;
+
 const originalConsole = {
     log: console.log.bind(console),
     warn: console.warn.bind(console),
@@ -47,13 +49,16 @@ process.stderr?.on?.('error', (error) => {
 
 function loadDotenv() {
     const candidates = [
+        process.env.ENGLISH_POD_ENV_FILE,
+        path.join(process.cwd(), '..', 'english-pod-learner.env'),
         path.join(process.cwd(), '.env'),
         path.join(process.cwd(), '..', '.env'),
         path.join(process.cwd(), '..', '..', '.env'),
         path.join(__dirname, '..', '.env'),
         path.join(__dirname, '..', '..', '.env'),
-        path.join(process.resourcesPath || '', '..', '..', '..', '.env')
-    ];
+        path.join(process.resourcesPath || '', '..', '..', '..', '.env'),
+        path.join(process.resourcesPath || '', '..', '..', '..', '..', 'english-pod-learner.env')
+    ].filter(Boolean);
     const seen = new Set();
 
     for (const candidate of candidates) {
@@ -62,7 +67,8 @@ function loadDotenv() {
         seen.add(envPath);
 
         if (fs.existsSync(envPath)) {
-            dotenv.config({ path: envPath });
+            dotenv.config({ path: envPath, override: true });
+            loadedEnvPath = envPath;
             console.log(`[ENV] Loaded .env from ${envPath}`);
             return;
         }
@@ -524,6 +530,16 @@ function hasHeader(headers, name) {
     return Object.keys(headers).some((key) => key.toLowerCase() === normalized);
 }
 
+function getRuntimeEnvConfig() {
+    return {
+        supabaseUrl: process.env.VITE_SUPABASE_URL || '',
+        supabaseAnonKey: process.env.VITE_SUPABASE_ANON_KEY || '',
+        remoteAccessPassword: process.env.VITE_REMOTE_ACCESS_PASSWORD || '',
+        disableLocalEngine: process.env.VITE_DISABLE_LOCAL_ENGINE === 'true',
+        sourcePath: loadedEnvPath,
+    };
+}
+
 async function handleOpenAIChatCompletion(_event, request) {
     const endpoint = request?.endpoint;
     const apiKey = request?.apiKey;
@@ -707,6 +723,7 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('get-backend-status', () => backendStatus);
+    ipcMain.handle('get-runtime-env-config', () => getRuntimeEnvConfig());
     ipcMain.handle('http-fetch', handleHttpFetch);
     ipcMain.handle('openai-chat-completion', handleOpenAIChatCompletion);
 

@@ -1,4 +1,5 @@
 import { db } from '../db';
+import { electronFetch } from './electronFetch';
 
 const ONE_MB = 1024 * 1024;
 
@@ -19,12 +20,20 @@ export async function getCachedAudioUrl(podcastId, sourceUrl, onStatus) {
     const cached = await checkAudioCache(podcastId, sourceUrl);
     if (cached) {
         onStatus?.(`Using cached audio (${formatBytes(cached.size || cached.audioBlob.size)}).`);
-        const objectUrl = URL.createObjectURL(cached.audioBlob);
-        return {
-            url: objectUrl,
-            cached: true,
-            revoke: () => URL.revokeObjectURL(objectUrl),
-        };
+        return createAudioObjectUrl(cached.audioBlob);
+    }
+
+    const audioBlob = await cacheAudioForPodcast(podcastId, sourceUrl, onStatus);
+    return createAudioObjectUrl(audioBlob);
+}
+
+export async function cacheAudioForPodcast(podcastId, sourceUrl, onStatus) {
+    if (!podcastId || !sourceUrl) return null;
+
+    const cached = await checkAudioCache(podcastId, sourceUrl);
+    if (cached) {
+        onStatus?.(`Audio already cached (${formatBytes(cached.size || cached.audioBlob.size)}).`);
+        return cached.audioBlob;
     }
 
     onStatus?.('Caching audio locally...');
@@ -46,12 +55,7 @@ export async function getCachedAudioUrl(podcastId, sourceUrl, onStatus) {
     });
 
     onStatus?.(`Audio cached (${formatBytes(audioBlob.size)}).`);
-    const objectUrl = URL.createObjectURL(audioBlob);
-    return {
-        url: objectUrl,
-        cached: true,
-        revoke: () => URL.revokeObjectURL(objectUrl),
-    };
+    return audioBlob;
 }
 
 export async function clearAudioCache() {
@@ -69,7 +73,7 @@ export async function getAudioCacheStats() {
 }
 
 async function fetchAudioBlob(sourceUrl, onProgress) {
-    const response = await fetch(sourceUrl, { cache: 'force-cache' });
+    const response = await electronFetch(sourceUrl, { cache: 'force-cache' });
     if (!response.ok) {
         throw new Error(`Audio download failed with HTTP ${response.status}`);
     }
@@ -102,4 +106,13 @@ function formatBytes(bytes) {
     if (!bytes) return '0 MB';
     if (bytes < ONE_MB) return `${Math.round(bytes / 1024)} KB`;
     return `${(bytes / ONE_MB).toFixed(1)} MB`;
+}
+
+function createAudioObjectUrl(audioBlob) {
+    const objectUrl = URL.createObjectURL(audioBlob);
+    return {
+        url: objectUrl,
+        cached: true,
+        revoke: () => URL.revokeObjectURL(objectUrl),
+    };
 }

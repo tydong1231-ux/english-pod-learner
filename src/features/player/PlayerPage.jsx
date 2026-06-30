@@ -7,7 +7,7 @@ import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
-import { getCachedAudioUrl, checkAudioCache } from '../../lib/audioCache';
+import { cacheAudioForPodcast, checkAudioCache } from '../../lib/audioCache';
 
 import styles from './PlayerPage.module.css';
 
@@ -96,26 +96,13 @@ export function PlayerPage() {
                         setAudioStatus('Ready from local cache.');
                     }
                 } else {
-                    // Not cached! Let's just stream the remote URL directly for fast playback start.
                     if (!cancelled) {
                         setAudioUrl(podcast.audio_url);
                         setAudioStatus('Streaming remote audio. Caching in background...');
-                        
-                        // Kick off a background download to cache it
-                        getCachedAudioUrl(podcast.id, podcast.audio_url, (message) => {
-                            // Only update status if we haven't unmounted and haven't encountered an error
-                            if (!cancelled && message.includes('Caching')) {
-                                setAudioStatus(`Streaming & ${message}`);
-                            }
-                        }).then(result => {
-                            if (cancelled) {
-                                result.revoke();
-                            } else {
-                                // Background caching finished
-                                // We keep playing the remote URL so we don't interrupt playback,
-                                // but next time they open it, it will be fully cached.
-                                revokeCurrent = result.revoke; 
-                                setAudioStatus('Streaming (Background caching complete).');
+
+                        cacheAudioForPodcast(podcast.id, podcast.audio_url, (message) => {
+                            if (!cancelled) {
+                                setAudioStatus(`Streaming remote audio. ${message}`);
                             }
                         }).catch(err => {
                             console.warn('[AudioCache] Background caching failed:', err);

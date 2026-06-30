@@ -1,21 +1,54 @@
 const STORAGE_KEY = 'podfluent-runtime-config';
 export const RUNTIME_CONFIG_CHANGED = 'podfluent-runtime-config-changed';
 
-const envConfig = {
+const buildEnvConfig = {
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL || '',
     supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || '',
     remoteAccessPassword: import.meta.env.VITE_REMOTE_ACCESS_PASSWORD || '',
     disableLocalEngine: import.meta.env.VITE_DISABLE_LOCAL_ENGINE === 'true',
+    sourcePath: '',
 };
+
+let envConfig = buildEnvConfig;
+let runtimeEnvLoadPromise = null;
+let runtimeEnvLoaded = false;
 
 export function getRuntimeConfig() {
     const stored = readStoredRuntimeConfig();
+    const storedMatchesCurrentEnv = doesStoredConfigMatchCurrentEnv(stored);
+
     return {
-        supabaseUrl: stored.supabaseUrl || envConfig.supabaseUrl,
-        supabaseAnonKey: stored.supabaseAnonKey || envConfig.supabaseAnonKey,
-        remoteAccessPassword: stored.remoteAccessPassword || envConfig.remoteAccessPassword,
-        disableLocalEngine: stored.hasOwnProperty('disableLocalEngine') ? stored.disableLocalEngine : envConfig.disableLocalEngine,
+        supabaseUrl: storedMatchesCurrentEnv && stored.supabaseUrl ? stored.supabaseUrl : envConfig.supabaseUrl,
+        supabaseAnonKey: storedMatchesCurrentEnv && stored.supabaseAnonKey ? stored.supabaseAnonKey : envConfig.supabaseAnonKey,
+        remoteAccessPassword: storedMatchesCurrentEnv && stored.remoteAccessPassword ? stored.remoteAccessPassword : envConfig.remoteAccessPassword,
+        disableLocalEngine: storedMatchesCurrentEnv && hasOwn(stored, 'disableLocalEngine')
+            ? stored.disableLocalEngine
+            : envConfig.disableLocalEngine,
+        sourcePath: envConfig.sourcePath || '',
     };
+}
+
+export async function loadRuntimeEnvConfig() {
+    if (runtimeEnvLoaded) return getRuntimeConfig();
+    if (runtimeEnvLoadPromise) return runtimeEnvLoadPromise;
+
+    runtimeEnvLoadPromise = (async () => {
+        const electronConfig = await getElectronRuntimeEnvConfig();
+        if (electronConfig) {
+            envConfig = {
+                ...buildEnvConfig,
+                ...electronConfig,
+                disableLocalEngine: Boolean(electronConfig.disableLocalEngine),
+            };
+        }
+
+        runtimeEnvLoaded = true;
+        const resolved = getRuntimeConfig();
+        window.dispatchEvent(new CustomEvent(RUNTIME_CONFIG_CHANGED, { detail: resolved }));
+        return resolved;
+    })();
+
+    return runtimeEnvLoadPromise;
 }
 
 export function saveRuntimeConfig(config) {
@@ -26,9 +59,10 @@ export function saveRuntimeConfig(config) {
         disableLocalEngine: Boolean(config.disableLocalEngine),
     };
 
-    // If the saved value is the exact same as envConfig, don't store it in local override
-    // This prevents old env values from getting stuck in localStorage.
     const toStore = { ...next };
+    toStore.__envSignature = getEnvSignature(envConfig);
+
+    // Values equal to the current env do not need to be duplicated in localStorage.
     if (toStore.supabaseUrl === envConfig.supabaseUrl) delete toStore.supabaseUrl;
     if (toStore.supabaseAnonKey === envConfig.supabaseAnonKey) delete toStore.supabaseAnonKey;
     if (toStore.remoteAccessPassword === envConfig.remoteAccessPassword) delete toStore.remoteAccessPassword;
@@ -69,9 +103,44 @@ function readStoredRuntimeConfig() {
             supabaseUrl: parsed.supabaseUrl || '',
             supabaseAnonKey: parsed.supabaseAnonKey || '',
             remoteAccessPassword: parsed.remoteAccessPassword || '',
-            disableLocalEngine: parsed.hasOwnProperty('disableLocalEngine') ? Boolean(parsed.disableLocalEngine) : undefined,
+            disableLocalEngine: hasOwn(parsed, 'disableLocalEngine') ? Boolean(parsed.disableLocalEngine) : undefined,
+            __envSignature: parsed.__envSignature || '',
         };
     } catch {
         return {};
     }
+}
+
+async function getElectronRuntimeEnvConfig() {
+    if (typeof window === 'undefined' || window.process?.type !== 'renderer') return null;
+
+    try {
+        const ipcRenderer = window.require?.('electron')?.ipcRenderer;
+        if (!ipcRenderer?.invoke) return null;
+        return await ipcRenderer.invoke('get-runtime-env-config');
+    } catch {
+        return null;
+    }
+}
+
+function doesStoredConfigMatchCurrentEnv(stored) {
+    if (!stored || Object.keys(stored).length === 0) return false;
+    if (stored.__envSignature) return stored.__envSignature === getEnvSignature(envConfig);
+
+    // Old versions saved raw values without an env signature. If the new env
+    // file has Supabase values, prefer the env file over stale localStorage.
+    return !envConfig.supabaseUrl && !envConfig.supabaseAnonKey;
+}
+
+function getEnvSignature(config) {
+    return [
+        config.supabaseUrl || '',
+        config.supabaseAnonKey || '',
+        config.remoteAccessPassword || '',
+        config.disableLocalEngine ? '1' : '0',
+    ].join('|');
+}
+
+function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
 }
