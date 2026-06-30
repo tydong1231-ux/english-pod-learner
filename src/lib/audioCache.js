@@ -2,13 +2,22 @@ import { db } from '../db';
 
 const ONE_MB = 1024 * 1024;
 
+export async function checkAudioCache(podcastId, sourceUrl) {
+    if (!podcastId || !sourceUrl) return null;
+    const cached = await db.audioCache.get(podcastId);
+    if (cached?.audioBlob && cached.sourceUrl === sourceUrl) {
+        return cached;
+    }
+    return null;
+}
+
 export async function getCachedAudioUrl(podcastId, sourceUrl, onStatus) {
     if (!podcastId || !sourceUrl) {
         return { url: sourceUrl, cached: false, revoke: () => { } };
     }
 
-    const cached = await db.audioCache.get(podcastId);
-    if (cached?.audioBlob && cached.sourceUrl === sourceUrl) {
+    const cached = await checkAudioCache(podcastId, sourceUrl);
+    if (cached) {
         onStatus?.(`Using cached audio (${formatBytes(cached.size || cached.audioBlob.size)}).`);
         const objectUrl = URL.createObjectURL(cached.audioBlob);
         return {

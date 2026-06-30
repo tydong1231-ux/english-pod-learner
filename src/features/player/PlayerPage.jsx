@@ -7,7 +7,7 @@ import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
-import { getCachedAudioUrl } from '../../lib/audioCache';
+import { getCachedAudioUrl, checkAudioCache } from '../../lib/audioCache';
 
 import styles from './PlayerPage.module.css';
 
@@ -86,23 +86,50 @@ export function PlayerPage() {
             setAudioError('');
 
             try {
-                const result = await getCachedAudioUrl(podcast.id, podcast.audio_url, (message) => {
-                    if (!cancelled) setAudioStatus(message);
-                });
-
-                if (cancelled) {
-                    result.revoke();
-                    return;
+                // First check if it's already fully cached locally
+                const cached = await checkAudioCache(podcast.id, podcast.audio_url);
+                if (cached) {
+                    const objectUrl = URL.createObjectURL(cached.audioBlob);
+                    revokeCurrent = () => URL.revokeObjectURL(objectUrl);
+                    if (!cancelled) {
+                        setAudioUrl(objectUrl);
+                        setAudioStatus('Ready from local cache.');
+                    }
+                } else {
+                    // Not cached! Let's just stream the remote URL directly for fast playback start.
+                    if (!cancelled) {
+                        setAudioUrl(podcast.audio_url);
+                        setAudioStatus('Streaming remote audio. Caching in background...');
+                        
+                        // Kick off a background download to cache it
+                        getCachedAudioUrl(podcast.id, podcast.audio_url, (message) => {
+                            // Only update status if we haven't unmounted and haven't encountered an error
+                            if (!cancelled && message.includes('Caching')) {
+                                setAudioStatus(`Streaming & ${message}`);
+                            }
+                        }).then(result => {
+                            if (cancelled) {
+                                result.revoke();
+                            } else {
+                                // Background caching finished
+                                // We keep playing the remote URL so we don't interrupt playback,
+                                // but next time they open it, it will be fully cached.
+                                revokeCurrent = result.revoke; 
+                                setAudioStatus('Streaming (Background caching complete).');
+                            }
+                        }).catch(err => {
+                            console.warn('[AudioCache] Background caching failed:', err);
+                            if (!cancelled) {
+                                setAudioStatus('Streaming (Background cache failed).');
+                            }
+                        });
+                    }
                 }
-
-                revokeCurrent = result.revoke;
-                setAudioUrl(result.url);
-                setAudioStatus(result.cached ? 'Ready from local cache.' : 'Ready.');
             } catch (error) {
-                console.warn('[AudioCache] Falling back to remote audio URL:', error);
+                console.warn('[AudioCache] Cache check failed:', error);
                 if (!cancelled) {
                     setAudioUrl(podcast.audio_url);
-                    setAudioError(`Local cache failed: ${error.message}`);
+                    setAudioError(`Cache check failed: ${error.message}`);
                     setAudioStatus('Using remote audio.');
                 }
             }

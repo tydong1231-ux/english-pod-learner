@@ -1,6 +1,64 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import { Play } from 'lucide-react';
 import styles from './TranscriptView.module.css';
+
+const SegmentRow = memo(({ segment, isActive, currentTime, onSeek, onPlaySegment, onWordClick, activeRef }) => {
+    return (
+        <div
+            className={`${styles.segment} ${isActive ? styles.activeSegment : ''}`}
+            ref={isActive ? activeRef : null}
+        >
+            <div className={styles.segmentHeader}>
+                <div className={styles.time}>{formatTime(segment.start)}</div>
+                <button
+                    type="button"
+                    className={styles.playSegmentButton}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (onPlaySegment) {
+                            onPlaySegment(segment.start || 0);
+                        } else {
+                            onSeek(segment.start || 0);
+                        }
+                    }}
+                    title="Play from this sentence"
+                >
+                    <Play size={13} fill="currentColor" />
+                </button>
+                {segment.speaker && (
+                    <div className={styles.speaker}>{segment.speaker}</div>
+                )}
+            </div>
+            <p className={styles.text}>
+                {segment.words ? (
+                    segment.words.map((wordObj, wIdx) => {
+                        const wStart = wordObj.start ?? segment.start ?? 0;
+                        const wEnd = wordObj.end ?? segment.end ?? 0;
+
+                        // Only evaluate word-level active state if the segment itself is active
+                        const isWordActive = isActive && currentTime !== null && (currentTime >= wStart && currentTime <= wEnd);
+
+                        return (
+                            <span
+                                key={wIdx}
+                                className={`${styles.word} ${isWordActive ? styles.activeWord : ''}`}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onWordClick(wordObj, segment.text);
+                                }}
+                                title="Click to learn"
+                            >
+                                {typeof wordObj === 'string' ? wordObj : wordObj.word}{' '}
+                            </span>
+                        );
+                    })
+                ) : (
+                    <span onClick={() => onSeek(segment.start)}>{segment.text}</span>
+                )}
+            </p>
+        </div>
+    );
+});
 
 export function TranscriptView({ transcript, currentTime, onSeek, onPlaySegment, onWordClick }) {
     const activeRef = useRef(null);
@@ -27,67 +85,19 @@ export function TranscriptView({ transcript, currentTime, onSeek, onPlaySegment,
                 const isActive = sIdx === activeSegmentIndex;
 
                 return (
-                    <div
+                    <SegmentRow
                         key={sIdx}
-                        className={`${styles.segment} ${isActive ? styles.activeSegment : ''}`}
-                        ref={isActive ? activeRef : null}
-                    >
-                        <div className={styles.segmentHeader}>
-                            <div className={styles.time}>{formatTime(segment.start)}</div>
-                            <button
-                                type="button"
-                                className={styles.playSegmentButton}
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (onPlaySegment) {
-                                        onPlaySegment(segment.start || 0);
-                                    } else {
-                                        onSeek(segment.start || 0);
-                                    }
-                                }}
-                                title="Play from this sentence"
-                            >
-                                <Play size={13} fill="currentColor" />
-                            </button>
-                            {segment.speaker && (
-                                <div className={styles.speaker}>{segment.speaker}</div>
-                            )}
-                        </div>
-                        <p className={styles.text}>
-                            {segment.words ? (
-                                segment.words.map((wordObj, wIdx) => {
-                                    // Word level highlight (if timestamps exist)
-                                    // If Gemini didn't return word timestamps, we might approximate or just not highlight words.
-                                    // Assuming Gemini returns structure: { word: "Hello", start, end } OR just string.
-                                    const wStart = wordObj.start ?? segment.start ?? 0;
-                                    const wEnd = wordObj.end ?? segment.end ?? 0;
-
-                                    // Highlight if current time is within this word's range
-                                    // Use a small buffer or ensure strict range
-                                    const isWordActive = currentTime >= wStart && currentTime <= wEnd;
-
-                                    return (
-                                        <span
-                                            key={wIdx}
-                                            className={`${styles.word} ${isWordActive ? styles.activeWord : ''}`}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onWordClick(wordObj, segment.text);
-                                            }}
-                                            title="Click to learn"
-                                        >
-                                            {typeof wordObj === 'string' ? wordObj : wordObj.word}{' '}
-                                        </span>
-                                    );
-                                })
-                            ) : (
-                                <span onClick={() => onSeek(segment.start)}>{segment.text}</span>
-                            )}
-                        </p>
-                    </div >
+                        segment={segment}
+                        isActive={isActive}
+                        currentTime={isActive ? currentTime : null}
+                        onSeek={onSeek}
+                        onPlaySegment={onPlaySegment}
+                        onWordClick={onWordClick}
+                        activeRef={activeRef}
+                    />
                 );
             })}
-        </div >
+        </div>
     );
 }
 
