@@ -6,6 +6,45 @@ const fs = require('fs');
 const url = require('url');
 const dotenv = require('dotenv');
 
+const originalConsole = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+};
+
+function isBrokenPipeError(error) {
+    return error?.code === 'EPIPE' || `${error?.message || ''}`.includes('EPIPE');
+}
+
+function safeConsole(method, args) {
+    try {
+        originalConsole[method](...args);
+    } catch (error) {
+        if (!isBrokenPipeError(error)) {
+            try {
+                originalConsole.error('[Electron] Console write failed:', error);
+            } catch {
+                // If the console stream itself is broken, there is nowhere safe to write.
+            }
+        }
+    }
+}
+
+console.log = (...args) => safeConsole('log', args);
+console.warn = (...args) => safeConsole('warn', args);
+console.error = (...args) => safeConsole('error', args);
+
+process.stdout?.on?.('error', (error) => {
+    if (!isBrokenPipeError(error)) {
+        safeConsole('error', ['[Electron] stdout stream error:', error]);
+    }
+});
+process.stderr?.on?.('error', (error) => {
+    if (!isBrokenPipeError(error)) {
+        safeConsole('error', ['[Electron] stderr stream error:', error]);
+    }
+});
+
 function loadDotenv() {
     const candidates = [
         path.join(process.cwd(), '.env'),
@@ -72,8 +111,18 @@ function parseStartupPhase(message) {
 }
 
 function sendStatusToRenderer(status) {
-    if (mainWindow && windowReady) {
-        mainWindow.webContents.send('backend-status', status);
+    sendToRenderer('backend-status', status);
+}
+
+function sendToRenderer(channel, payload) {
+    if (!mainWindow || !windowReady || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) {
+        return;
+    }
+
+    try {
+        mainWindow.webContents.send(channel, payload);
+    } catch (error) {
+        console.warn(`[Electron] Failed to send ${channel} to renderer: ${error.message}`);
     }
 }
 
@@ -153,10 +202,10 @@ function sendLogToRenderer(message, type = 'info') {
         // Send buffered logs first
         while (logBuffer.length > 0) {
             const buffered = logBuffer.shift();
-            mainWindow.webContents.send('server-log', buffered);
+            sendToRenderer('server-log', buffered);
         }
         // Send current log
-        mainWindow.webContents.send('server-log', logEntry);
+        sendToRenderer('server-log', logEntry);
     } else {
         // Buffer until window is ready
         logBuffer.push(logEntry);
