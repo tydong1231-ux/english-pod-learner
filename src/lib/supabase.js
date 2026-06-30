@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { electronFetch } from './electronFetch';
 import { getSupabaseRuntimeConfig } from './runtimeConfig';
 
 const AUDIO_BUCKET = 'audio-files';
@@ -11,7 +12,11 @@ export function isSupabaseConfigured() {
 }
 
 function createSupabaseClient(url, anonKey) {
-    return createClient(url, anonKey);
+    return createClient(url, anonKey, {
+        global: {
+            fetch: electronFetch,
+        },
+    });
 }
 
 function getSupabaseClient() {
@@ -154,7 +159,7 @@ export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {
 
     await addCheck('Public file URL', async () => {
         if (!publicUrl) throw new Error('Storage upload did not produce a public URL.');
-        const response = await fetch(publicUrl, { cache: 'no-store' });
+        const response = await electronFetch(publicUrl, { cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`Public file returned HTTP ${response.status}. Make sure ${AUDIO_BUCKET} is public.`);
         }

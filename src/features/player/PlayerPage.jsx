@@ -166,7 +166,8 @@ export function PlayerPage() {
             setVocabCard(card);
         } catch (err) {
             console.error(err);
-            alert("Failed to generate definition.");
+            const message = err?.message || String(err);
+            alert(`Failed to generate definition.\n\n${message}`);
         } finally {
             setLoadingVocab(false);
         }

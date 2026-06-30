@@ -440,6 +440,173 @@ function startStaticServer() {
     });
 }
 
+async function handleHttpFetch(_event, request) {
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(request?.url || '');
+    } catch {
+        return {
+            ok: false,
+            error: 'Request URL is not valid.',
+        };
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return {
+            ok: false,
+            error: 'Only http and https requests are allowed.',
+        };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    try {
+        const headers = sanitizeFetchHeaders(request.headers || {});
+        const body = deserializeFetchBody(request.body);
+
+        if (request.body?.contentType && !hasHeader(headers, 'content-type')) {
+            headers['content-type'] = request.body.contentType;
+        }
+
+        const response = await fetch(parsedUrl.toString(), {
+            method: request.method || 'GET',
+            headers,
+            body,
+            signal: controller.signal,
+        });
+        const responseBody = Buffer.from(await response.arrayBuffer());
+
+        return {
+            ok: true,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers.entries()),
+            bodyBase64: responseBody.toString('base64'),
+        };
+    } catch (error) {
+        const detail = [
+            error?.message,
+            error?.cause?.code,
+            error?.cause?.message,
+        ].filter(Boolean).join(' ');
+        return {
+            ok: false,
+            error: error?.name === 'AbortError'
+                ? 'Request timed out after 120 seconds.'
+                : (detail || String(error)),
+        };
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function sanitizeFetchHeaders(headers) {
+    const output = {};
+    for (const [key, value] of Object.entries(headers)) {
+        const normalized = key.toLowerCase();
+        if (['host', 'content-length', 'connection'].includes(normalized)) continue;
+        if (value === undefined || value === null) continue;
+        output[key] = value;
+    }
+    return output;
+}
+
+function deserializeFetchBody(body) {
+    if (!body) return undefined;
+    if (body.type === 'text') return body.value;
+    if (body.type === 'base64') return Buffer.from(body.value || '', 'base64');
+    return undefined;
+}
+
+function hasHeader(headers, name) {
+    const normalized = name.toLowerCase();
+    return Object.keys(headers).some((key) => key.toLowerCase() === normalized);
+}
+
+async function handleOpenAIChatCompletion(_event, request) {
+    const endpoint = request?.endpoint;
+    const apiKey = request?.apiKey;
+    const payload = request?.payload;
+
+    if (!endpoint || !apiKey || !payload) {
+        return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            body: 'Missing endpoint, API key, or request payload.',
+        };
+    }
+
+    let parsedEndpoint;
+    try {
+        parsedEndpoint = new URL(endpoint);
+    } catch {
+        return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            body: 'OpenAI-compatible Base URL is not a valid URL.',
+        };
+    }
+
+    if (!['http:', 'https:'].includes(parsedEndpoint.protocol)) {
+        return {
+            ok: false,
+            status: 400,
+            statusText: 'Bad Request',
+            body: 'OpenAI-compatible Base URL must use http or https.',
+        };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+        });
+        const body = await response.text();
+
+        if (!response.ok) {
+            return {
+                ok: false,
+                status: response.status,
+                statusText: response.statusText,
+                body: body.slice(0, 2000),
+            };
+        }
+
+        try {
+            return { ok: true, data: JSON.parse(body) };
+        } catch {
+            return {
+                ok: false,
+                status: 502,
+                statusText: 'Bad Gateway',
+                body: `Provider returned non-JSON response: ${body.slice(0, 500)}`,
+            };
+        }
+    } catch (error) {
+        return {
+            ok: false,
+            status: 0,
+            statusText: error?.name === 'AbortError' ? 'Timeout' : 'Network Error',
+            body: error?.name === 'AbortError'
+                ? 'Provider request timed out after 45 seconds.'
+                : (error?.message || String(error)),
+        };
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
@@ -540,6 +707,8 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('get-backend-status', () => backendStatus);
+    ipcMain.handle('http-fetch', handleHttpFetch);
+    ipcMain.handle('openai-chat-completion', handleOpenAIChatCompletion);
 
     createPythonProcess();
     createWindow();

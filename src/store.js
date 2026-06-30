@@ -1,10 +1,18 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const envDefaults = {
+    geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+    vocabProvider: import.meta.env.VITE_VOCAB_PROVIDER || 'gemini',
+    openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || '',
+    openaiBaseUrl: import.meta.env.VITE_OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    openaiModel: import.meta.env.VITE_OPENAI_MODEL || 'gpt-4o-mini',
+};
+
 export const useStore = create(
     persist(
         (set) => ({
-            apiKey: '',
+            apiKey: envDefaults.geminiApiKey,
             setApiKey: (key) => set({ apiKey: key }),
 
             // Player State
@@ -29,16 +37,16 @@ export const useStore = create(
             setGeminiModel: (m) => set({ geminiModel: m }),
 
             // Vocabulary AI provider
-            vocabProvider: 'gemini',
+            vocabProvider: envDefaults.vocabProvider,
             setVocabProvider: (provider) => set({ vocabProvider: provider }),
 
-            openaiApiKey: '',
+            openaiApiKey: envDefaults.openaiApiKey,
             setOpenaiApiKey: (key) => set({ openaiApiKey: key }),
 
-            openaiBaseUrl: 'https://api.openai.com/v1',
+            openaiBaseUrl: envDefaults.openaiBaseUrl,
             setOpenaiBaseUrl: (url) => set({ openaiBaseUrl: url }),
 
-            openaiModel: 'gpt-4o-mini',
+            openaiModel: envDefaults.openaiModel,
             setOpenaiModel: (model) => set({ openaiModel: model }),
 
             // Whisper Model
@@ -62,6 +70,18 @@ export const useStore = create(
                 whisperModel: state.whisperModel,
                 remoteAccessEnabled: state.remoteAccessEnabled
             }),
+            merge: (persistedState, currentState) => {
+                const persisted = persistedState || {};
+                return {
+                    ...currentState,
+                    ...persisted,
+                    apiKey: persisted.apiKey || currentState.apiKey,
+                    vocabProvider: persisted.vocabProvider || currentState.vocabProvider,
+                    openaiApiKey: persisted.openaiApiKey || currentState.openaiApiKey,
+                    openaiBaseUrl: persisted.openaiBaseUrl || currentState.openaiBaseUrl,
+                    openaiModel: persisted.openaiModel || currentState.openaiModel,
+                };
+            },
         }
     )
 );

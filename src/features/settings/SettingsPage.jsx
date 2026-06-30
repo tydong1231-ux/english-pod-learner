@@ -5,6 +5,7 @@ import { LogViewer } from '../../components/LogViewer';
 import { canUseLocalFeatures } from '../../lib/env';
 import { getRuntimeConfig, saveRuntimeConfig } from '../../lib/runtimeConfig';
 import { testSupabaseConnection } from '../../lib/supabase';
+import { testOpenAICompatibleConfig } from '../../lib/openaiVocab';
 import { clearAudioCache, getAudioCacheStats } from '../../lib/audioCache';
 import styles from './SettingsPage.module.css';
 
@@ -48,10 +49,17 @@ export function SettingsPage() {
     const [testResult, setTestResult] = useState(null);
     const [cacheStats, setCacheStats] = useState({ count: 0, label: '0 MB' });
     const [cacheStatus, setCacheStatus] = useState('idle');
+    const [vocabTestStatus, setVocabTestStatus] = useState('idle');
+    const [vocabTestResult, setVocabTestResult] = useState(null);
 
     const resetSupabaseTest = () => {
         setTestStatus('idle');
         setTestResult(null);
+    };
+
+    const resetVocabTest = () => {
+        setVocabTestStatus('idle');
+        setVocabTestResult(null);
     };
 
     // Notify Electron when remote setting changes (auto-apply)
@@ -164,6 +172,39 @@ export function SettingsPage() {
             setTimeout(() => setCacheStatus('idle'), 2000);
         } catch {
             setCacheStatus('error');
+        }
+    };
+
+    const handleTestVocabProvider = async () => {
+        setVocabTestStatus('testing');
+        setVocabTestResult(null);
+
+        if (!inputOpenaiKey.trim()) {
+            setVocabTestResult({
+                ok: false,
+                message: 'OpenAI-compatible API key is required.',
+            });
+            setVocabTestStatus('error');
+            return;
+        }
+
+        try {
+            const result = await testOpenAICompatibleConfig({
+                apiKey: inputOpenaiKey,
+                baseUrl: inputOpenaiBaseUrl,
+                model: inputOpenaiModel,
+            });
+            setVocabTestResult({
+                ok: true,
+                message: `Connected to ${result.baseUrl} with model ${result.model}. Reply: ${result.preview}`,
+            });
+            setVocabTestStatus('success');
+        } catch (error) {
+            setVocabTestResult({
+                ok: false,
+                message: error?.message || String(error),
+            });
+            setVocabTestStatus('error');
         }
     };
 
@@ -433,7 +474,7 @@ export function SettingsPage() {
                         <label>Provider</label>
                         <select
                             value={selectedVocabProvider}
-                            onChange={(e) => { setSelectedVocabProvider(e.target.value); setStatus('idle'); }}
+                            onChange={(e) => { setSelectedVocabProvider(e.target.value); setStatus('idle'); resetVocabTest(); }}
                             className={styles.input}
                         >
                             <option value="gemini">Gemini</option>
@@ -449,7 +490,7 @@ export function SettingsPage() {
                                     id="openaiApiKey"
                                     type="password"
                                     value={inputOpenaiKey}
-                                    onChange={(e) => { setInputOpenaiKey(e.target.value); setStatus('idle'); }}
+                                    onChange={(e) => { setInputOpenaiKey(e.target.value); setStatus('idle'); resetVocabTest(); }}
                                     placeholder="sk-..."
                                     className={styles.input}
                                 />
@@ -460,7 +501,7 @@ export function SettingsPage() {
                                     id="openaiBaseUrl"
                                     type="url"
                                     value={inputOpenaiBaseUrl}
-                                    onChange={(e) => { setInputOpenaiBaseUrl(e.target.value); setStatus('idle'); }}
+                                    onChange={(e) => { setInputOpenaiBaseUrl(e.target.value); setStatus('idle'); resetVocabTest(); }}
                                     placeholder="https://api.openai.com/v1"
                                     className={styles.input}
                                 />
@@ -470,7 +511,7 @@ export function SettingsPage() {
                                 <input
                                     id="openaiModel"
                                     value={inputOpenaiModel}
-                                    onChange={(e) => { setInputOpenaiModel(e.target.value); setStatus('idle'); }}
+                                    onChange={(e) => { setInputOpenaiModel(e.target.value); setStatus('idle'); resetVocabTest(); }}
                                     placeholder="gpt-4o-mini"
                                     className={styles.input}
                                 />
@@ -496,7 +537,56 @@ export function SettingsPage() {
                                 </>
                             )}
                         </button>
+
+                        {selectedVocabProvider === 'openai' && (
+                            <button
+                                type="button"
+                                onClick={handleTestVocabProvider}
+                                className={styles.secondaryButton}
+                                disabled={vocabTestStatus === 'testing' || !inputOpenaiKey.trim()}
+                            >
+                                {vocabTestStatus === 'testing' ? (
+                                    <>
+                                        <Loader size={16} className={styles.spin} />
+                                        Testing
+                                    </>
+                                ) : vocabTestStatus === 'success' ? (
+                                    <>
+                                        <CheckCircle size={16} />
+                                        Test Passed
+                                    </>
+                                ) : (
+                                    <>
+                                        <RefreshCcw size={16} />
+                                        Test Provider
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        {vocabTestStatus === 'error' && (
+                            <span className={styles.error}>
+                                <AlertCircle size={16} />
+                                Provider test failed.
+                            </span>
+                        )}
                     </div>
+
+                    {selectedVocabProvider === 'openai' && vocabTestResult && (
+                        <div className={`${styles.testResult} ${vocabTestResult.ok ? styles.testSuccess : styles.testError}`}>
+                            <div className={styles.testRow}>
+                                {vocabTestResult.ok ? (
+                                    <CheckCircle size={16} className={styles.testOkIcon} />
+                                ) : (
+                                    <AlertCircle size={16} className={styles.testErrorIcon} />
+                                )}
+                                <div>
+                                    <strong>Vocabulary provider</strong>
+                                    <p>{vocabTestResult.message}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Whisper Model Section - Hide in Web Mode */}

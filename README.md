@@ -43,6 +43,11 @@ VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_REMOTE_ACCESS_PASSWORD=
 VITE_DISABLE_LOCAL_ENGINE=false
+VITE_GEMINI_API_KEY=
+VITE_VOCAB_PROVIDER=gemini
+VITE_OPENAI_API_KEY=
+VITE_OPENAI_BASE_URL=https://api.openai.com/v1
+VITE_OPENAI_MODEL=gpt-4o-mini
 HF_TOKEN=
 ```
 
@@ -50,7 +55,7 @@ HF_TOKEN=
 
 Set `VITE_DISABLE_LOCAL_ENGINE=true` if you want to run the app with Gemini fallback only while WhisperX models are unavailable or still downloading.
 
-You can also update Supabase URL, Supabase anon key, remote access password, and local engine mode later from the in-app Settings page. Values saved there are stored locally on the current device.
+You can also update Supabase URL, Supabase anon key, remote access password, local engine mode, and vocabulary provider settings later from the in-app Settings page. Values saved there are stored locally on the current device.
 
 3. Create the Supabase tables and storage bucket.
 
