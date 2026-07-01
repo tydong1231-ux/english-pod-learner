@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { useStore } from '../../store';
@@ -8,6 +8,7 @@ import { useAudioPlayer } from '../../hooks/useAudioPlayer';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
 import { cacheAudioForPodcast, checkAudioCache } from '../../lib/audioCache';
+import { isRemoteAccess, isWebBuild } from '../../lib/env';
 
 import styles from './PlayerPage.module.css';
 
@@ -82,7 +83,8 @@ export function PlayerPage() {
         let revokeCurrent = () => { };
 
         async function prepareAudio() {
-            setAudioUrl(podcast.audio_url);
+            const streamUrl = getPlayableAudioUrl(podcast.audio_url);
+            setAudioUrl(streamUrl);
             setAudioStatus('Streaming remote audio. Checking local cache...');
             setAudioError('');
 
@@ -116,7 +118,7 @@ export function PlayerPage() {
             } catch (error) {
                 console.warn('[AudioCache] Cache check failed:', error);
                 if (!cancelled) {
-                    setAudioUrl(podcast.audio_url);
+                    setAudioUrl(streamUrl);
                     setAudioError(`Cache check failed: ${error.message}`);
                     setAudioStatus('Using remote audio.');
                 }
@@ -250,7 +252,9 @@ export function PlayerPage() {
                     <div className={styles.vocabPanel}>
                         <div className={styles.vocabHeader}>
                             <h3>Vocabulary</h3>
-                            <button onClick={() => setVocabCard(null)}>×</button>
+                            <button type="button" onClick={() => setVocabCard(null)} title="Close vocabulary">
+                                <X size={18} />
+                            </button>
                         </div>
 
                         {loadingVocab ? (
@@ -332,4 +336,12 @@ function formatTime(s) {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function getPlayableAudioUrl(sourceUrl) {
+    if (isRemoteAccess && !isWebBuild) {
+        return `/audio-proxy?url=${encodeURIComponent(sourceUrl)}`;
+    }
+
+    return sourceUrl;
 }

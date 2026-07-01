@@ -58,6 +58,25 @@ export async function cacheAudioForPodcast(podcastId, sourceUrl, onStatus) {
     return audioBlob;
 }
 
+export async function saveAudioFileToCache(podcastId, sourceUrl, file) {
+    if (!podcastId || !sourceUrl || !file) return null;
+
+    const audioBlob = file instanceof Blob
+        ? file
+        : new Blob([file], { type: file.type || 'audio/mpeg' });
+
+    await db.audioCache.put({
+        podcastId,
+        sourceUrl,
+        audioBlob,
+        mimeType: audioBlob.type || file.type || 'audio/mpeg',
+        size: audioBlob.size,
+        createdAt: new Date().toISOString(),
+    });
+
+    return audioBlob;
+}
+
 export async function clearAudioCache() {
     await db.audioCache.clear();
 }

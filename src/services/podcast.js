@@ -3,6 +3,7 @@ import { formatSupabaseError, supabase, uploadAudio } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
 import { WhisperXService } from '../lib/whisperx';
 import { isLocalEngineDisabled } from '../lib/runtimeConfig';
+import { cacheAudioForPodcast, checkAudioCache, saveAudioFileToCache } from '../lib/audioCache';
 
 // Constants for Status using Supabase Strings
 export const PodcastStatus = {
@@ -12,40 +13,7 @@ export const PodcastStatus = {
     ERROR: 'ERROR'
 };
 
-const AUDIO_DOWNLOAD_TIMEOUT_MS = 60000;
 const DEFAULT_FOLDER = 'Inbox';
-
-function fetchWithTimeout(resource, options = {}, timeoutMs = AUDIO_DOWNLOAD_TIMEOUT_MS) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    return fetch(resource, {
-        ...options,
-        signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
-}
-
-async function downloadAudioFromSupabase(audioUrl) {
-    try {
-        const response = await fetchWithTimeout(audioUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const audioBlob = await response.blob();
-        if (!audioBlob.size) {
-            throw new Error('Downloaded audio file is empty.');
-        }
-
-        audioBlob.name = 'audio.mp3';
-        return audioBlob;
-    } catch (error) {
-        if (error?.name === 'AbortError') {
-            throw new Error('Downloading audio from Supabase timed out after 60 seconds.');
-        }
-        throw new Error(`Could not download audio from Supabase public URL: ${error.message}`);
-    }
-}
 
 export class PodcastService {
     static async importPodcast(file, options = {}) {
@@ -85,6 +53,13 @@ export class PodcastService {
         if (error) {
             throw new Error(`Supabase podcast insert failed: ${formatSupabaseError(error)}`);
         }
+
+        try {
+            await saveAudioFileToCache(data.id, audioUrl, file);
+        } catch (cacheError) {
+            console.warn('[PodcastService] Failed to cache selected audio file:', cacheError);
+        }
+
         return data.id;
     }
 
@@ -160,8 +135,20 @@ export class PodcastService {
                 await setProgress('Preparing selected audio file...');
                 audioBlob = sourceFile;
             } else {
-                await setProgress('Downloading audio from Supabase...');
-                audioBlob = await downloadAudioFromSupabase(podcast.audio_url);
+                const cached = await checkAudioCache(id, podcast.audio_url);
+                if (cached?.audioBlob) {
+                    await setProgress('Preparing cached local audio...');
+                    audioBlob = cached.audioBlob;
+                } else {
+                    await setProgress('Downloading audio from Supabase...');
+                    audioBlob = await cacheAudioForPodcast(id, podcast.audio_url, async (message) => {
+                        await setProgress(message);
+                    });
+                }
+            }
+
+            if (!audioBlob?.size) {
+                throw new Error('Audio file is empty or unavailable.');
             }
 
             console.log(`Processing ${podcast.title}...`);

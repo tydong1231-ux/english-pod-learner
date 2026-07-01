@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const url = require('url');
 const dotenv = require('dotenv');
+const { Readable } = require('stream');
 
 let loadedEnvPath = null;
 
@@ -401,8 +402,13 @@ function startStaticServer() {
     };
 
     staticServer = http.createServer((req, res) => {
-        let parsedUrl = url.parse(req.url);
+        let parsedUrl = url.parse(req.url, true);
         let pathname = parsedUrl.pathname;
+
+        if (pathname === '/audio-proxy') {
+            handleAudioProxy(req, res, parsedUrl);
+            return;
+        }
 
         // Default to index.html for SPA routing
         if (pathname === '/' || !path.extname(pathname)) {
@@ -444,6 +450,100 @@ function startStaticServer() {
     staticServer.on('error', (err) => {
         sendLogToRenderer(`[HTTP Server] Error: ${err.message}`, 'error');
     });
+}
+
+async function handleAudioProxy(req, res, parsedUrl) {
+    const target = parsedUrl.query?.url;
+    let targetUrl;
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
+            'Access-Control-Allow-Headers': 'Range,Content-Type',
+            'Access-Control-Max-Age': '86400',
+        });
+        res.end();
+        return;
+    }
+
+    try {
+        targetUrl = new URL(target || '');
+    } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Missing or invalid audio proxy URL.');
+        return;
+    }
+
+    if (!['http:', 'https:'].includes(targetUrl.protocol)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Only http and https audio URLs are allowed.');
+        return;
+    }
+
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    try {
+        const headers = {};
+        if (req.headers.range) headers.Range = req.headers.range;
+
+        const upstream = await fetch(targetUrl.toString(), {
+            method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+            headers,
+            signal: controller.signal,
+        });
+
+        const responseHeaders = {
+            'Access-Control-Allow-Origin': '*',
+            'Accept-Ranges': upstream.headers.get('accept-ranges') || 'bytes',
+            'Cache-Control': upstream.headers.get('cache-control') || 'public, max-age=3600',
+        };
+
+        [
+            'content-type',
+            'content-length',
+            'content-range',
+            'etag',
+            'last-modified',
+        ].forEach((headerName) => {
+            const value = upstream.headers.get(headerName);
+            if (value) responseHeaders[headerName] = value;
+        });
+
+        res.writeHead(upstream.status, responseHeaders);
+
+        if (req.method === 'HEAD') {
+            res.end();
+            return;
+        }
+
+        if (!upstream.body) {
+            res.end(Buffer.from(await upstream.arrayBuffer()));
+            return;
+        }
+
+        Readable.fromWeb(upstream.body)
+            .on('error', (error) => {
+                if (!res.destroyed) res.destroy(error);
+            })
+            .pipe(res);
+    } catch (error) {
+        if (res.headersSent) {
+            if (!res.destroyed) res.destroy(error);
+            return;
+        }
+
+        if (error?.name === 'AbortError') {
+            res.writeHead(499, { 'Content-Type': 'text/plain' });
+            res.end('Audio proxy request was cancelled.');
+            return;
+        }
+
+        sendLogToRenderer(`[HTTP Server] Audio proxy failed: ${error.message}`, 'error');
+        res.writeHead(502, { 'Content-Type': 'text/plain' });
+        res.end(`Audio proxy failed: ${error.message}`);
+    }
 }
 
 async function handleHttpFetch(_event, request) {

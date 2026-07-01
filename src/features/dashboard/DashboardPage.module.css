@@ -575,6 +575,15 @@
         grid-template-columns: 16px minmax(0, 1fr);
     }
 
+    .folderList,
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .renameControl {
+        grid-template-columns: minmax(0, 1fr) 34px 34px;
+    }
+
     .compactField {
         grid-template-columns: 1fr;
     }

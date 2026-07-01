@@ -28,6 +28,8 @@ import styles from './DashboardPage.module.css';
 const ALL_FOLDERS = 'all';
 const DEFAULT_FOLDER = 'Inbox';
 const CUSTOM_FOLDERS_KEY = 'podfluent-custom-folders';
+const UPLOAD_CONCURRENCY = 3;
+const RESUMABLE_STATUSES = new Set([PodcastStatus.PENDING, PodcastStatus.PROCESSING]);
 
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
@@ -48,7 +50,13 @@ export function DashboardPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const { apiKey, geminiModel, transcriptionPrompt } = useStore();
     const fileInputRef = useRef(null);
+    const processingQueueRef = useRef([]);
+    const processingIdsRef = useRef(new Set());
+    const processingActiveRef = useRef(false);
+    const settingsRef = useRef({ apiKey, geminiModel, transcriptionPrompt });
+    const enqueueProcessingRef = useRef(() => { });
     const navigate = useNavigate();
+    enqueueProcessingRef.current = enqueueProcessing;
 
     const folderCounts = useMemo(() => {
         const counts = new Map();
@@ -98,6 +106,10 @@ export function DashboardPage() {
     const canDeleteSelectedFolder = selectedFolder !== ALL_FOLDERS && selectedFolder !== DEFAULT_FOLDER;
 
     useEffect(() => {
+        settingsRef.current = { apiKey, geminiModel, transcriptionPrompt };
+    }, [apiKey, geminiModel, transcriptionPrompt]);
+
+    useEffect(() => {
         if (selectedFolder !== ALL_FOLDERS && !folders.includes(selectedFolder)) {
             setSelectedFolder(ALL_FOLDERS);
         }
@@ -135,6 +147,16 @@ export function DashboardPage() {
         };
     }, []);
 
+    useEffect(() => {
+        if (!canUseLocalFeatures || !canProcessAudio(apiKey)) return;
+
+        const resumable = podcasts
+            .filter((podcast) => RESUMABLE_STATUSES.has(podcast.status))
+            .map((podcast) => ({ id: podcast.id }));
+
+        enqueueProcessingRef.current(resumable);
+    }, [podcasts, apiKey]);
+
     async function fetchPodcasts() {
         try {
             const { data, error } = await supabase
@@ -153,43 +175,144 @@ export function DashboardPage() {
         }
     }
 
+    function enqueueProcessing(items) {
+        if (!Array.isArray(items) || items.length === 0) return;
+
+        let queuedCount = 0;
+        items.forEach((item) => {
+            const id = typeof item === 'string' ? item : item?.id;
+            if (!id || processingIdsRef.current.has(id)) return;
+
+            processingIdsRef.current.add(id);
+            processingQueueRef.current.push({
+                id,
+                file: typeof item === 'string' ? null : item.file || null,
+            });
+            queuedCount += 1;
+        });
+
+        if (queuedCount > 0) {
+            runProcessingQueue();
+        }
+    }
+
+    async function runProcessingQueue() {
+        if (processingActiveRef.current) return;
+        if (!canProcessAudio(settingsRef.current.apiKey)) return;
+
+        const nextItem = processingQueueRef.current.shift();
+        if (!nextItem) return;
+
+        processingActiveRef.current = true;
+        const { apiKey: currentApiKey, geminiModel: currentModel, transcriptionPrompt: currentPrompt } = settingsRef.current;
+
+        const updateLocalStatus = (message) => {
+            setPodcasts(prev => prev.map(podcast => (
+                podcast.id === nextItem.id
+                    ? { ...podcast, status: PodcastStatus.PROCESSING, progress: message, error: null }
+                    : podcast
+            )));
+        };
+
+        try {
+            await PodcastService.processPodcast(
+                nextItem.id,
+                currentApiKey,
+                currentModel,
+                currentPrompt,
+                updateLocalStatus,
+                nextItem.file
+            );
+        } catch (err) {
+            console.error(err);
+            setPodcasts(prev => prev.map(podcast => (
+                podcast.id === nextItem.id
+                    ? { ...podcast, status: PodcastStatus.ERROR, error: err.message }
+                    : podcast
+            )));
+        } finally {
+            await fetchPodcasts();
+            processingIdsRef.current.delete(nextItem.id);
+            processingActiveRef.current = false;
+
+            if (processingQueueRef.current.length > 0) {
+                runProcessingQueue();
+            }
+        }
+    }
+
     const handleFileSelect = async (event) => {
         const input = event.target;
-        const file = input.files[0];
-        if (!file) return;
+        const files = Array.from(input.files || []);
+        if (files.length === 0) return;
         if (!isSupabaseConfigured()) {
             alert('Supabase is not configured. Open Settings and fill in Supabase URL and anon key.');
             input.value = '';
             return;
         }
 
+        const targetFolder = normalizeFolder(selectedFolder === ALL_FOLDERS ? importFolder : selectedFolder);
+        const uploadedItems = new Array(files.length);
+        const failures = [];
+
         try {
-            const targetFolder = normalizeFolder(selectedFolder === ALL_FOLDERS ? importFolder : selectedFolder);
-            setUploadState({ status: 'loading', message: `Uploading ${file.name} to ${targetFolder}...` });
-            const id = await PodcastService.importPodcast(file, { folder: targetFolder });
             addCustomFolder(targetFolder);
-            setUploadState({ status: 'success', message: `${file.name} uploaded successfully.` });
-            setTimeout(() => setUploadState({ status: 'idle', message: '' }), 3000);
 
-            fetchPodcasts();
+            let completed = 0;
+            setUploadState({
+                status: 'loading',
+                message: files.length === 1
+                    ? `Uploading ${files[0].name} to ${targetFolder}...`
+                    : `Uploading 0/${files.length} files to ${targetFolder}...`,
+            });
 
-            if (canProcessAudio(apiKey)) {
-                const updateLocalStatus = (message) => {
-                    setPodcasts(prev => prev.map(podcast => (
-                        podcast.id === id
-                            ? { ...podcast, status: PodcastStatus.PROCESSING, progress: message }
-                            : podcast
-                    )));
-                };
-
-                PodcastService.processPodcast(id, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus, file)
-                    .then(() => fetchPodcasts())
-                    .catch(err => {
-                        console.error(err);
-                        fetchPodcasts();
+            await runWithConcurrency(files, UPLOAD_CONCURRENCY, async (file, index) => {
+                try {
+                    setUploadState({
+                        status: 'loading',
+                        message: files.length === 1
+                            ? `Uploading ${file.name} to ${targetFolder}...`
+                            : `Uploading ${index + 1}/${files.length}: ${file.name}`,
                     });
+
+                    const id = await PodcastService.importPodcast(file, { folder: targetFolder });
+                    uploadedItems[index] = { id, file };
+                    completed += 1;
+
+                    setUploadState({
+                        status: 'loading',
+                        message: files.length === 1
+                            ? `${file.name} uploaded. Queueing processing...`
+                            : `Uploaded ${completed}/${files.length} files. Queueing processing...`,
+                    });
+                } catch (err) {
+                    failures.push({ file, error: err });
+                    console.error(`Import failed for ${file.name}`, err);
+                }
+            });
+
+            await fetchPodcasts();
+
+            const successfulItems = uploadedItems.filter(Boolean);
+            if (canProcessAudio(apiKey)) {
+                enqueueProcessing(successfulItems);
+            } else if (successfulItems.length > 0) {
+                alert('Audio uploaded. Enable Local WhisperX Engine or add a Gemini API key in Settings to process it.');
+            }
+
+            if (failures.length > 0) {
+                const failedNames = failures.map(({ file }) => file.name).join(', ');
+                setUploadState({
+                    status: 'error',
+                    message: `${failures.length} file${failures.length === 1 ? '' : 's'} failed: ${failedNames}`,
+                });
+                alert(`Some files failed to import:\n\n${failedNames}`);
             } else {
-                alert('Please set your Gemini API Key in Settings to process this podcast.');
+                setUploadState({
+                    status: 'success',
+                    message: `${successfulItems.length} file${successfulItems.length === 1 ? '' : 's'} uploaded${canProcessAudio(apiKey) ? ' and queued for processing' : ''}.`,
+                });
+                setTimeout(() => setUploadState({ status: 'idle', message: '' }), 3000);
             }
         } catch (err) {
             console.error('Import failed', err);
@@ -206,22 +329,7 @@ export function DashboardPage() {
             return;
         }
 
-        const updateLocalStatus = (message) => {
-            setPodcasts(prev => prev.map(podcast => (
-                podcast.id === podcastId
-                    ? { ...podcast, status: PodcastStatus.PROCESSING, progress: message }
-                    : podcast
-            )));
-        };
-
-        PodcastService.processPodcast(podcastId, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus).catch(err => {
-            console.error(err);
-            setPodcasts(prev => prev.map(podcast => (
-                podcast.id === podcastId
-                    ? { ...podcast, status: PodcastStatus.ERROR, error: err.message }
-                    : podcast
-            )));
-        });
+        enqueueProcessing([{ id: podcastId }]);
     };
 
     const handleCreateFolder = (event) => {
@@ -422,6 +530,7 @@ export function DashboardPage() {
                     type="file"
                     ref={fileInputRef}
                     accept="audio/*,video/*"
+                    multiple
                     style={{ display: 'none' }}
                     onChange={handleFileSelect}
                 />
@@ -732,6 +841,22 @@ function sortFolders(folders) {
 
 function compareCreatedDesc(a, b) {
     return `${b.created_at || ''}`.localeCompare(`${a.created_at || ''}`);
+}
+
+async function runWithConcurrency(items, limit, worker) {
+    const results = new Array(items.length);
+    let nextIndex = 0;
+
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (nextIndex < items.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await worker(items[index], index);
+        }
+    });
+
+    await Promise.all(workers);
+    return results;
 }
 
 function canProcessAudio(apiKey) {
