@@ -226,9 +226,11 @@ export class PodcastService {
             // Save Transcript to Supabase
             const { error: transcriptError } = await supabase
                 .from('transcripts')
-                .insert({
+                .upsert({
                     podcast_id: id,
                     content: finalTranscript.segments
+                }, {
+                    onConflict: 'podcast_id'
                 });
 
             if (transcriptError) throw transcriptError;
