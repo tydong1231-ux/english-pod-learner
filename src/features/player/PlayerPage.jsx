@@ -82,11 +82,11 @@ export function PlayerPage() {
         let revokeCurrent = () => { };
 
         async function prepareAudio() {
-            setAudioStatus('Preparing audio...');
+            setAudioUrl(podcast.audio_url);
+            setAudioStatus('Streaming remote audio. Checking local cache...');
             setAudioError('');
 
             try {
-                // First check if it's already fully cached locally
                 const cached = await checkAudioCache(podcast.id, podcast.audio_url);
                 if (cached) {
                     const objectUrl = URL.createObjectURL(cached.audioBlob);
@@ -96,21 +96,22 @@ export function PlayerPage() {
                         setAudioStatus('Ready from local cache.');
                     }
                 } else {
-                    if (!cancelled) {
-                        setAudioUrl(podcast.audio_url);
-                        setAudioStatus('Streaming remote audio. Caching in background...');
-
-                        cacheAudioForPodcast(podcast.id, podcast.audio_url, (message) => {
+                    cacheAudioForPodcast(podcast.id, podcast.audio_url, (message) => {
+                        if (!cancelled) {
+                            setAudioStatus(`Streaming remote audio. ${message}`);
+                        }
+                    })
+                        .then(() => {
                             if (!cancelled) {
-                                setAudioStatus(`Streaming remote audio. ${message}`);
+                                setAudioStatus('Streaming remote audio. Cached for next time.');
                             }
-                        }).catch(err => {
+                        })
+                        .catch(err => {
                             console.warn('[AudioCache] Background caching failed:', err);
                             if (!cancelled) {
-                                setAudioStatus('Streaming (Background cache failed).');
+                                setAudioStatus('Streaming remote audio. Background cache failed.');
                             }
                         });
-                    }
                 }
             } catch (error) {
                 console.warn('[AudioCache] Cache check failed:', error);
@@ -316,7 +317,10 @@ export function PlayerPage() {
                     onLoadedMetadata={checkDuration}
                     onCanPlay={checkDuration}
                     onLoadedData={checkDuration}
-                    crossOrigin="anonymous" // Essential for Supabase URL if needed
+                    onError={(event) => {
+                        const code = event.currentTarget.error?.code;
+                        setAudioError(`Audio playback failed${code ? ` (code ${code})` : ''}.`);
+                    }}
                 />
             </div>
         </div>

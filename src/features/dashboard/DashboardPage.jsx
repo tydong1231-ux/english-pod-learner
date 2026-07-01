@@ -1,52 +1,115 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { Upload, Play, Trash2, Clock, AlertTriangle, Loader, FileAudio, CheckCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+    AlertTriangle,
+    Check,
+    CheckCircle,
+    Clock,
+    FileAudio,
+    Folder,
+    FolderOpen,
+    Loader,
+    Pencil,
+    Play,
+    Plus,
+    Search,
+    Trash2,
+    Upload,
+    X,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatSupabaseError, supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { formatSupabaseError, isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { canUseLocalFeatures } from '../../lib/env';
 import { normalizeFolder, PodcastService, PodcastStatus } from '../../services/podcast';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
 import styles from './DashboardPage.module.css';
 
+const ALL_FOLDERS = 'all';
+const DEFAULT_FOLDER = 'Inbox';
+const CUSTOM_FOLDERS_KEY = 'podfluent-custom-folders';
+
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
     const [loading, setLoading] = useState(isSupabaseConfigured());
     const [connectionError, setConnectionError] = useState(null);
     const [uploadState, setUploadState] = useState({ status: 'idle', message: '' });
-    const [deletingIds, setDeletingIds] = useState(() => new Set());
     const [deleteState, setDeleteState] = useState({ status: 'idle', message: '' });
-    const [selectedFolder, setSelectedFolder] = useState('all');
-    const [importFolder, setImportFolder] = useState('Inbox');
+    const [folderState, setFolderState] = useState({ status: 'idle', message: '' });
+    const [deletingIds, setDeletingIds] = useState(() => new Set());
+    const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+    const [selectedFolder, setSelectedFolder] = useState(ALL_FOLDERS);
+    const [importFolder, setImportFolder] = useState(DEFAULT_FOLDER);
+    const [customFolders, setCustomFolders] = useState(readCustomFolders);
     const [newFolderName, setNewFolderName] = useState('');
+    const [renamingFolder, setRenamingFolder] = useState(false);
+    const [renameValue, setRenameValue] = useState('');
     const [sortMode, setSortMode] = useState('created_desc');
+    const [searchQuery, setSearchQuery] = useState('');
     const { apiKey, geminiModel, transcriptionPrompt } = useStore();
     const fileInputRef = useRef(null);
     const navigate = useNavigate();
 
-    const folders = React.useMemo(() => {
-        const values = new Set(['Inbox']);
-        podcasts.forEach((podcast) => values.add(normalizeFolder(podcast.folder)));
-        if (newFolderName.trim()) values.add(normalizeFolder(newFolderName));
-        return [...values].sort((a, b) => a.localeCompare(b));
-    }, [podcasts, newFolderName]);
+    const folderCounts = useMemo(() => {
+        const counts = new Map();
+        counts.set(DEFAULT_FOLDER, 0);
+        customFolders.forEach((folder) => counts.set(normalizeFolder(folder), 0));
+        podcasts.forEach((podcast) => {
+            const folder = normalizeFolder(podcast.folder);
+            counts.set(folder, (counts.get(folder) || 0) + 1);
+        });
+        return counts;
+    }, [podcasts, customFolders]);
 
-    const displayedPodcasts = React.useMemo(() => {
-        const filtered = selectedFolder === 'all'
-            ? [...podcasts]
-            : podcasts.filter((podcast) => normalizeFolder(podcast.folder) === selectedFolder);
+    const folders = useMemo(() => sortFolders([...folderCounts.keys()]), [folderCounts]);
+
+    const displayedPodcasts = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        const filtered = podcasts.filter((podcast) => {
+            const folder = normalizeFolder(podcast.folder);
+            const inFolder = selectedFolder === ALL_FOLDERS || folder === selectedFolder;
+            if (!inFolder) return false;
+            if (!query) return true;
+
+            return [
+                podcast.title,
+                podcast.status,
+                folder,
+                podcast.progress,
+            ].filter(Boolean).some((value) => `${value}`.toLowerCase().includes(query));
+        });
 
         filtered.sort((a, b) => {
             if (sortMode === 'title_asc') return a.title.localeCompare(b.title);
             if (sortMode === 'title_desc') return b.title.localeCompare(a.title);
-            if (sortMode === 'folder_asc') return normalizeFolder(a.folder).localeCompare(normalizeFolder(b.folder)) || b.created_at.localeCompare(a.created_at);
-            if (sortMode === 'status_asc') return a.status.localeCompare(b.status) || b.created_at.localeCompare(a.created_at);
-            return b.created_at.localeCompare(a.created_at);
+            if (sortMode === 'folder_asc') return normalizeFolder(a.folder).localeCompare(normalizeFolder(b.folder)) || compareCreatedDesc(a, b);
+            if (sortMode === 'status_asc') return a.status.localeCompare(b.status) || compareCreatedDesc(a, b);
+            return compareCreatedDesc(a, b);
         });
 
         return filtered;
-    }, [podcasts, selectedFolder, sortMode]);
+    }, [podcasts, searchQuery, selectedFolder, sortMode]);
 
-    // Fetch podcasts on mount and subscribe to changes
+    const selectedFolderCount = selectedFolder === ALL_FOLDERS
+        ? podcasts.length
+        : folderCounts.get(selectedFolder) || 0;
+    const selectedTitle = selectedFolder === ALL_FOLDERS ? 'All Podcasts' : selectedFolder;
+    const canRenameSelectedFolder = selectedFolder !== ALL_FOLDERS && selectedFolder !== DEFAULT_FOLDER;
+    const canDeleteSelectedFolder = selectedFolder !== ALL_FOLDERS && selectedFolder !== DEFAULT_FOLDER;
+
+    useEffect(() => {
+        if (selectedFolder !== ALL_FOLDERS && !folders.includes(selectedFolder)) {
+            setSelectedFolder(ALL_FOLDERS);
+        }
+    }, [folders, selectedFolder]);
+
+    useEffect(() => {
+        if (selectedFolder !== ALL_FOLDERS) {
+            setImportFolder(selectedFolder);
+        } else if (!folders.includes(importFolder)) {
+            setImportFolder(DEFAULT_FOLDER);
+        }
+    }, [folders, importFolder, selectedFolder]);
+
     useEffect(() => {
         if (!isSupabaseConfigured()) {
             return undefined;
@@ -54,15 +117,13 @@ export function DashboardPage() {
 
         fetchPodcasts();
 
-        // Real-time subscription (may not work on all Supabase tiers)
         const channel = supabase
             .channel('public:podcasts')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'podcasts' }, () => {
-                fetchPodcasts(); // Refresh list on any change
+                fetchPodcasts();
             })
             .subscribe();
 
-        // Fallback polling every 3 seconds (reliable refresh)
         const pollInterval = setInterval(() => {
             fetchPodcasts();
         }, 3000);
@@ -84,15 +145,15 @@ export function DashboardPage() {
             setPodcasts(data || []);
             setConnectionError(null);
         } catch (err) {
-            console.error("Error fetching podcasts:", err);
+            console.error('Error fetching podcasts:', err);
             setConnectionError(formatSupabaseError(err));
         } finally {
             setLoading(false);
         }
     }
 
-    const handleFileSelect = async (e) => {
-        const input = e.target;
+    const handleFileSelect = async (event) => {
+        const input = event.target;
         const file = input.files[0];
         if (!file) return;
         if (!isSupabaseConfigured()) {
@@ -102,25 +163,22 @@ export function DashboardPage() {
         }
 
         try {
-            setUploadState({ status: 'loading', message: `Uploading ${file.name}...` });
-            const folder = normalizeFolder(importFolder);
-            const id = await PodcastService.importPodcast(file, { folder });
+            const targetFolder = normalizeFolder(selectedFolder === ALL_FOLDERS ? importFolder : selectedFolder);
+            setUploadState({ status: 'loading', message: `Uploading ${file.name} to ${targetFolder}...` });
+            const id = await PodcastService.importPodcast(file, { folder: targetFolder });
+            addCustomFolder(targetFolder);
             setUploadState({ status: 'success', message: `${file.name} uploaded successfully.` });
             setTimeout(() => setUploadState({ status: 'idle', message: '' }), 3000);
 
-            // Validate UI update immediately
             fetchPodcasts();
 
-            // Auto-start processing if API key exists
             if (apiKey) {
-                // Callback to update local state on progress
-                const updateLocalStatus = (msg) => {
-                    setPodcasts(prev => prev.map(p => {
-                        if (p.id === id) {
-                            return { ...p, status: PodcastStatus.PROCESSING, progress: msg };
-                        }
-                        return p;
-                    }));
+                const updateLocalStatus = (message) => {
+                    setPodcasts(prev => prev.map(podcast => (
+                        podcast.id === id
+                            ? { ...podcast, status: PodcastStatus.PROCESSING, progress: message }
+                            : podcast
+                    )));
                 };
 
                 PodcastService.processPodcast(id, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus, file)
@@ -130,10 +188,10 @@ export function DashboardPage() {
                         fetchPodcasts();
                     });
             } else {
-                alert("Please set your Gemini API Key in Settings to process this podcast.");
+                alert('Please set your Gemini API Key in Settings to process this podcast.');
             }
         } catch (err) {
-            console.error("Import failed", err);
+            console.error('Import failed', err);
             setUploadState({ status: 'error', message: formatSupabaseError(err) });
             alert(`Failed to import podcast.\n\n${formatSupabaseError(err)}\n\nOpen Settings > App Connection and click Test Connection.`);
         } finally {
@@ -141,35 +199,34 @@ export function DashboardPage() {
         }
     };
 
-    const handleProcess = (testId) => {
+    const handleProcess = (podcastId) => {
         if (!apiKey) {
             navigate('/settings');
             return;
         }
 
-        // Optimistic update wrapper
-        const updateLocalStatus = (msg) => {
-            setPodcasts(prev => prev.map(p => {
-                if (p.id === testId) {
-                    return { ...p, status: PodcastStatus.PROCESSING, progress: msg };
-                }
-                return p;
-            }));
+        const updateLocalStatus = (message) => {
+            setPodcasts(prev => prev.map(podcast => (
+                podcast.id === podcastId
+                    ? { ...podcast, status: PodcastStatus.PROCESSING, progress: message }
+                    : podcast
+            )));
         };
 
-        PodcastService.processPodcast(testId, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus).catch(err => {
+        PodcastService.processPodcast(podcastId, apiKey, geminiModel, transcriptionPrompt, updateLocalStatus).catch(err => {
             console.error(err);
-            setPodcasts(prev => prev.map(p => {
-                if (p.id === testId) {
-                    return { ...p, status: PodcastStatus.ERROR, error: err.message };
-                }
-                return p;
-            }));
+            setPodcasts(prev => prev.map(podcast => (
+                podcast.id === podcastId
+                    ? { ...podcast, status: PodcastStatus.ERROR, error: err.message }
+                    : podcast
+            )));
         });
     };
 
-    const handleCreateFolder = () => {
+    const handleCreateFolder = (event) => {
+        event?.preventDefault();
         const folder = normalizeFolder(newFolderName);
+        addCustomFolder(folder);
         setImportFolder(folder);
         setSelectedFolder(folder);
         setNewFolderName('');
@@ -177,7 +234,11 @@ export function DashboardPage() {
 
     const handleFolderChange = async (podcastId, folder) => {
         const nextFolder = normalizeFolder(folder);
-        setPodcasts(prev => prev.map(pod => pod.id === podcastId ? { ...pod, folder: nextFolder } : pod));
+        setPodcasts(prev => prev.map(podcast => (
+            podcast.id === podcastId ? { ...podcast, folder: nextFolder } : podcast
+        )));
+        addCustomFolder(nextFolder);
+
         try {
             await PodcastService.updatePodcastFolder(podcastId, nextFolder);
         } catch (err) {
@@ -187,17 +248,86 @@ export function DashboardPage() {
         }
     };
 
-    const [deleteConfirmId, setDeleteConfirmId] = React.useState(null);
+    const startRenameFolder = () => {
+        setRenameValue(selectedFolder);
+        setRenamingFolder(true);
+    };
 
-    const handleDeleteClick = (e, id) => {
-        e.stopPropagation();
-        e.preventDefault();
+    const cancelRenameFolder = () => {
+        setRenamingFolder(false);
+        setRenameValue('');
+    };
+
+    const confirmRenameFolder = async () => {
+        if (!canRenameSelectedFolder) return;
+        const source = selectedFolder;
+        const target = normalizeFolder(renameValue);
+        if (!target || target === source) {
+            cancelRenameFolder();
+            return;
+        }
+        if (folders.includes(target)) {
+            alert('A folder with that name already exists.');
+            return;
+        }
+
+        setRenamingFolder(false);
+        setFolderState({ status: 'loading', message: `Renaming ${source}...` });
+        setPodcasts(prev => prev.map(podcast => (
+            normalizeFolder(podcast.folder) === source ? { ...podcast, folder: target } : podcast
+        )));
+        replaceCustomFolder(source, target);
+        setSelectedFolder(target);
+        if (importFolder === source) setImportFolder(target);
+
+        try {
+            await PodcastService.renameFolder(source, target);
+            setFolderState({ status: 'success', message: `Renamed to ${target}.` });
+            setTimeout(() => setFolderState({ status: 'idle', message: '' }), 2500);
+        } catch (err) {
+            console.error('Folder rename failed', err);
+            setFolderState({ status: 'error', message: err.message || 'Folder rename failed.' });
+            fetchPodcasts();
+        }
+    };
+
+    const handleDeleteFolder = async () => {
+        if (!canDeleteSelectedFolder) return;
+        const folder = selectedFolder;
+        const count = folderCounts.get(folder) || 0;
+        const shouldMove = count > 0
+            ? window.confirm(`Move ${count} podcast${count === 1 ? '' : 's'} from "${folder}" to Inbox?`)
+            : window.confirm(`Delete empty folder "${folder}"?`);
+        if (!shouldMove) return;
+
+        setFolderState({ status: 'loading', message: `Moving ${folder} to Inbox...` });
+        setPodcasts(prev => prev.map(podcast => (
+            normalizeFolder(podcast.folder) === folder ? { ...podcast, folder: DEFAULT_FOLDER } : podcast
+        )));
+        removeCustomFolder(folder);
+        setSelectedFolder(DEFAULT_FOLDER);
+        if (importFolder === folder) setImportFolder(DEFAULT_FOLDER);
+
+        try {
+            await PodcastService.moveFolderContents(folder, DEFAULT_FOLDER);
+            setFolderState({ status: 'success', message: `${folder} moved to Inbox.` });
+            setTimeout(() => setFolderState({ status: 'idle', message: '' }), 2500);
+        } catch (err) {
+            console.error('Folder delete failed', err);
+            setFolderState({ status: 'error', message: err.message || 'Folder delete failed.' });
+            fetchPodcasts();
+        }
+    };
+
+    const handleDeleteClick = (event, id) => {
+        event.stopPropagation();
+        event.preventDefault();
         setDeleteConfirmId(id);
     };
 
-    const confirmDelete = async (e, id) => {
-        e.stopPropagation();
-        e.preventDefault();
+    const confirmDelete = async (event, id) => {
+        event.stopPropagation();
+        event.preventDefault();
         setDeletingIds(prev => new Set(prev).add(id));
         setDeleteState({ status: 'loading', message: 'Deleting podcast...' });
         try {
@@ -205,8 +335,7 @@ export function DashboardPage() {
             setDeleteConfirmId(null);
             setDeleteState({ status: 'success', message: 'Podcast deleted.' });
             setTimeout(() => setDeleteState({ status: 'idle', message: '' }), 2500);
-            // Optimistic update or wait for subscription
-            setPodcasts(prev => prev.filter(p => p.id !== id));
+            setPodcasts(prev => prev.filter(podcast => podcast.id !== id));
         } catch (err) {
             console.error('Delete failed', err);
             setDeleteState({ status: 'error', message: err.message || 'Delete failed.' });
@@ -219,13 +348,38 @@ export function DashboardPage() {
         }
     };
 
-    const cancelDelete = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
+    const cancelDelete = (event) => {
+        event.stopPropagation();
+        event.preventDefault();
         setDeleteConfirmId(null);
     };
 
-    if (loading) return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}><Loader className={styles.spin} /></div>;
+    function addCustomFolder(folder) {
+        persistCustomFolders(prev => sortFolders([...new Set([...prev, normalizeFolder(folder)])]));
+    }
+
+    function removeCustomFolder(folder) {
+        persistCustomFolders(prev => prev.filter(item => item !== folder));
+    }
+
+    function replaceCustomFolder(source, target) {
+        persistCustomFolders(prev => sortFolders([...new Set(prev.map(folder => (
+            folder === source ? target : folder
+        )).concat(target))]));
+    }
+
+    function persistCustomFolders(updater) {
+        setCustomFolders(prev => {
+            const next = sortFolders([...new Set(updater(prev).map(normalizeFolder))]);
+            writeCustomFolders(next);
+            return next;
+        });
+    }
+
+    if (loading) {
+        return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}><Loader className={styles.spin} /></div>;
+    }
+
     if (!isSupabaseConfigured()) {
         return (
             <div className="container">
@@ -250,8 +404,8 @@ export function DashboardPage() {
         <div className="container">
             <header className={styles.header}>
                 <div>
-                    <h1>Your Library</h1>
-                    <p className={styles.subtitle}>{podcasts.length} Podcasts</p>
+                    <h1>Library</h1>
+                    <p className={styles.subtitle}>{podcasts.length} podcasts across {folders.length} folders</p>
                 </div>
                 {canUseLocalFeatures && (
                     <button
@@ -272,193 +426,309 @@ export function DashboardPage() {
                 />
             </header>
 
-            <div className={styles.libraryControls}>
-                <div className={styles.controlGroup}>
-                    <label>Folder</label>
-                    <select
-                        value={selectedFolder}
-                        onChange={(e) => setSelectedFolder(e.target.value)}
+            <div className={styles.libraryShell}>
+                <aside className={styles.folderPane}>
+                    <div className={styles.folderPaneHeader}>
+                        <span>Folders</span>
+                    </div>
+
+                    <button
+                        type="button"
+                        className={`${styles.folderItem} ${selectedFolder === ALL_FOLDERS ? styles.folderActive : ''}`}
+                        onClick={() => setSelectedFolder(ALL_FOLDERS)}
                     >
-                        <option value="all">All folders</option>
-                        {folders.map(folder => (
-                            <option key={folder} value={folder}>{folder}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className={styles.controlGroup}>
-                    <label>Import to</label>
-                    <select
-                        value={importFolder}
-                        onChange={(e) => setImportFolder(e.target.value)}
-                    >
-                        {folders.map(folder => (
-                            <option key={folder} value={folder}>{folder}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className={styles.controlGroup}>
-                    <label>New folder</label>
-                    <div className={styles.inlineControl}>
+                        <FolderOpen size={18} />
+                        <span>All Podcasts</span>
+                        <strong>{podcasts.length}</strong>
+                    </button>
+
+                    <div className={styles.folderList}>
+                        {folders.map((folder) => {
+                            const isActive = selectedFolder === folder;
+                            return (
+                                <button
+                                    type="button"
+                                    key={folder}
+                                    className={`${styles.folderItem} ${isActive ? styles.folderActive : ''}`}
+                                    onClick={() => setSelectedFolder(folder)}
+                                >
+                                    {isActive ? <FolderOpen size={18} /> : <Folder size={18} />}
+                                    <span>{folder}</span>
+                                    <strong>{folderCounts.get(folder) || 0}</strong>
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <form className={styles.newFolderForm} onSubmit={handleCreateFolder}>
                         <input
                             value={newFolderName}
-                            onChange={(e) => setNewFolderName(e.target.value)}
-                            placeholder="Folder name"
+                            onChange={(event) => setNewFolderName(event.target.value)}
+                            placeholder="New folder"
+                            aria-label="New folder"
                         />
                         <button
-                            type="button"
-                            onClick={handleCreateFolder}
+                            type="submit"
                             disabled={!newFolderName.trim()}
+                            title="Create folder"
                         >
-                            Add
+                            <Plus size={16} />
                         </button>
-                    </div>
-                </div>
-                <div className={styles.controlGroup}>
-                    <label>Sort</label>
-                    <select
-                        value={sortMode}
-                        onChange={(e) => setSortMode(e.target.value)}
-                    >
-                        <option value="created_desc">Newest first</option>
-                        <option value="title_asc">Title A-Z</option>
-                        <option value="title_desc">Title Z-A</option>
-                        <option value="folder_asc">Folder</option>
-                        <option value="status_asc">Status</option>
-                    </select>
-                </div>
-            </div>
+                    </form>
+                </aside>
 
-            {(uploadState.status !== 'idle' || deleteState.status !== 'idle') && (
-                <div className={styles.operationStatus}>
-                    {uploadState.status !== 'idle' && (
-                        <div className={styles.statusLine} data-status={uploadState.status}>
-                            {uploadState.status === 'loading' && <Loader size={16} className={styles.spin} />}
-                            {uploadState.status === 'success' && <CheckCircle size={16} />}
-                            {uploadState.status === 'error' && <AlertTriangle size={16} />}
-                            <span>{uploadState.message}</span>
-                        </div>
-                    )}
-                    {deleteState.status !== 'idle' && (
-                        <div className={styles.statusLine} data-status={deleteState.status}>
-                            {deleteState.status === 'loading' && <Loader size={16} className={styles.spin} />}
-                            {deleteState.status === 'success' && <CheckCircle size={16} />}
-                            {deleteState.status === 'error' && <AlertTriangle size={16} />}
-                            <span>{deleteState.message}</span>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {connectionError ? (
-                <div className={styles.emptyState}>
-                    <div className={styles.emptyIcon}>
-                        <AlertTriangle size={48} />
-                    </div>
-                    <h3>Supabase connection failed</h3>
-                    <p>{connectionError}</p>
-                </div>
-            ) : displayedPodcasts.length === 0 ? (
-                <div className={styles.emptyState}>
-                    <div className={styles.emptyIcon}>
-                        <FileAudio size={48} />
-                    </div>
-                    <h3>No podcasts here</h3>
-                    <p>Import an audio file or switch folders.</p>
-                </div>
-            ) : (
-                <div className={styles.grid}>
-                    {displayedPodcasts.map(pod => (
-                        <div
-                            key={pod.id}
-                            className={styles.card}
-                            onClick={() => pod.status === PodcastStatus.READY && navigate(`/player/${pod.id}`)}
-                        >
-                            <div className={styles.cardIcon}>
-                                {pod.status === PodcastStatus.PROCESSING ? (
-                                    <Loader className={styles.spin} />
-                                ) : pod.status === PodcastStatus.ERROR ? (
-                                    <AlertTriangle color="#ef4444" />
-                                ) : (
-                                    <Play fill="currentColor" />
-                                )}
+                <section className={styles.contentPane}>
+                    <div className={styles.folderToolbar}>
+                        <div className={styles.currentFolder}>
+                            <div className={styles.currentFolderIcon}>
+                                {selectedFolder === ALL_FOLDERS ? <FolderOpen size={22} /> : <Folder size={22} />}
                             </div>
 
-                            <div className={styles.cardContent}>
-                                <h3 className={styles.cardTitle}>{pod.title}</h3>
-                                <div className={styles.cardMeta}>
-                                    <span>{new Date(pod.created_at).toLocaleDateString()}</span>
+                            {renamingFolder ? (
+                                <div className={styles.renameControl}>
+                                    <input
+                                        value={renameValue}
+                                        onChange={(event) => setRenameValue(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter') confirmRenameFolder();
+                                            if (event.key === 'Escape') cancelRenameFolder();
+                                        }}
+                                        autoFocus
+                                    />
+                                    <button type="button" onClick={confirmRenameFolder} title="Save folder name">
+                                        <Check size={16} />
+                                    </button>
+                                    <button type="button" onClick={cancelRenameFolder} title="Cancel rename">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className={styles.currentFolderText}>
+                                        <h2>{selectedTitle}</h2>
+                                        <p>{selectedFolderCount} podcast{selectedFolderCount === 1 ? '' : 's'}</p>
+                                    </div>
+                                    <div className={styles.folderActions}>
+                                        {canRenameSelectedFolder && (
+                                            <button type="button" onClick={startRenameFolder} title="Rename folder">
+                                                <Pencil size={16} />
+                                            </button>
+                                        )}
+                                        {canDeleteSelectedFolder && (
+                                            <button type="button" onClick={handleDeleteFolder} title="Move folder contents to Inbox">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        <div className={styles.toolbarControls}>
+                            <label className={styles.searchBox}>
+                                <Search size={16} />
+                                <input
+                                    value={searchQuery}
+                                    onChange={(event) => setSearchQuery(event.target.value)}
+                                    placeholder="Search"
+                                />
+                            </label>
+
+                            {canUseLocalFeatures && (
+                                <label className={styles.compactField}>
+                                    <span>Import to</span>
                                     <select
-                                        className={styles.folderSelect}
-                                        value={normalizeFolder(pod.folder)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        onChange={(e) => handleFolderChange(pod.id, e.target.value)}
+                                        value={importFolder}
+                                        onChange={(event) => setImportFolder(event.target.value)}
                                     >
                                         {folders.map(folder => (
                                             <option key={folder} value={folder}>{folder}</option>
                                         ))}
                                     </select>
-                                    <span className={styles.statusBadge} data-status={pod.status}>
-                                        {pod.status}
-                                    </span>
-                                </div>
-                                {pod.status === PodcastStatus.PROCESSING && pod.progress && (
-                                    <p className={styles.progressText}>{pod.progress}</p>
-                                )}
-                                {pod.status === PodcastStatus.ERROR && (
-                                    <p className={styles.errorText}>Error: {pod.error || 'Unknown'}</p>
-                                )}
-                            </div>
+                                </label>
+                            )}
 
-                            <div className={styles.cardActions}>
-                                {pod.status !== PodcastStatus.READY && canUseLocalFeatures && (
-                                    <button
-                                        className={styles.iconButton}
-                                        onClick={(e) => { e.stopPropagation(); handleProcess(pod.id); }}
-                                        title="Start or retry processing"
-                                        disabled={deletingIds.has(pod.id)}
-                                    >
-                                        <Clock size={18} />
-                                    </button>
-                                )}
-                                {canUseLocalFeatures && (
-                                    deleteConfirmId === pod.id ? (
-                                        <div className={styles.confirmDelete}>
-                                            <button
-                                                onClick={(e) => confirmDelete(e, pod.id)}
-                                                className={styles.confirmBtn}
-                                                disabled={deletingIds.has(pod.id)}
-                                            >
-                                                {deletingIds.has(pod.id) ? '...' : 'Yes'}
-                                            </button>
-                                            <button
-                                                onClick={cancelDelete}
-                                                className={styles.cancelBtn}
-                                                disabled={deletingIds.has(pod.id)}
-                                            >
-                                                No
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <button
-                                            className={styles.iconButton}
-                                            onClick={(e) => handleDeleteClick(e, pod.id)}
-                                            title="Delete"
-                                            disabled={deletingIds.has(pod.id)}
-                                        >
-                                            {deletingIds.has(pod.id) ? <Loader size={18} className={styles.spin} /> : <Trash2 size={18} />}
-                                        </button>
-                                    )
-                                )}
-                            </div>
+                            <label className={styles.compactField}>
+                                <span>Sort</span>
+                                <select
+                                    value={sortMode}
+                                    onChange={(event) => setSortMode(event.target.value)}
+                                >
+                                    <option value="created_desc">Newest</option>
+                                    <option value="title_asc">Title A-Z</option>
+                                    <option value="title_desc">Title Z-A</option>
+                                    <option value="folder_asc">Folder</option>
+                                    <option value="status_asc">Status</option>
+                                </select>
+                            </label>
                         </div>
-                    ))}
+                    </div>
+
+                    {(uploadState.status !== 'idle' || deleteState.status !== 'idle' || folderState.status !== 'idle') && (
+                        <div className={styles.operationStatus}>
+                            <StatusLine state={uploadState} />
+                            <StatusLine state={deleteState} />
+                            <StatusLine state={folderState} />
+                        </div>
+                    )}
+
+                    {connectionError ? (
+                        <div className={styles.emptyState}>
+                            <div className={styles.emptyIcon}>
+                                <AlertTriangle size={48} />
+                            </div>
+                            <h3>Supabase connection failed</h3>
+                            <p>{connectionError}</p>
+                        </div>
+                    ) : displayedPodcasts.length === 0 ? (
+                        <div className={styles.emptyState}>
+                            <div className={styles.emptyIcon}>
+                                <FileAudio size={48} />
+                            </div>
+                            <h3>No podcasts here</h3>
+                            <p>{searchQuery ? 'Try a different search.' : 'Import an audio file or choose another folder.'}</p>
+                        </div>
+                    ) : (
+                        <div className={styles.grid}>
+                            {displayedPodcasts.map(podcast => (
+                                <div
+                                    key={podcast.id}
+                                    className={styles.card}
+                                    onClick={() => podcast.status === PodcastStatus.READY && navigate(`/player/${podcast.id}`)}
+                                >
+                                    <div className={styles.cardIcon}>
+                                        {podcast.status === PodcastStatus.PROCESSING ? (
+                                            <Loader className={styles.spin} />
+                                        ) : podcast.status === PodcastStatus.ERROR ? (
+                                            <AlertTriangle color="#ef4444" />
+                                        ) : (
+                                            <Play fill="currentColor" />
+                                        )}
+                                    </div>
+
+                                    <div className={styles.cardContent}>
+                                        <h3 className={styles.cardTitle}>{podcast.title}</h3>
+                                        <div className={styles.cardMeta}>
+                                            <span>{new Date(podcast.created_at).toLocaleDateString()}</span>
+                                            <span className={styles.statusBadge} data-status={podcast.status}>
+                                                {podcast.status}
+                                            </span>
+                                        </div>
+                                        <label className={styles.moveField} onClick={(event) => event.stopPropagation()}>
+                                            <Folder size={14} />
+                                            <select
+                                                value={normalizeFolder(podcast.folder)}
+                                                onChange={(event) => handleFolderChange(podcast.id, event.target.value)}
+                                            >
+                                                {folders.map(folder => (
+                                                    <option key={folder} value={folder}>{folder}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        {podcast.status === PodcastStatus.PROCESSING && podcast.progress && (
+                                            <p className={styles.progressText}>{podcast.progress}</p>
+                                        )}
+                                        {podcast.status === PodcastStatus.ERROR && (
+                                            <p className={styles.errorText}>Error: {podcast.error || 'Unknown'}</p>
+                                        )}
+                                    </div>
+
+                                    <div className={styles.cardActions}>
+                                        {podcast.status !== PodcastStatus.READY && canUseLocalFeatures && (
+                                            <button
+                                                className={styles.iconButton}
+                                                onClick={(event) => { event.stopPropagation(); handleProcess(podcast.id); }}
+                                                title="Start or retry processing"
+                                                disabled={deletingIds.has(podcast.id)}
+                                            >
+                                                <Clock size={18} />
+                                            </button>
+                                        )}
+                                        {canUseLocalFeatures && (
+                                            deleteConfirmId === podcast.id ? (
+                                                <div className={styles.confirmDelete}>
+                                                    <button
+                                                        onClick={(event) => confirmDelete(event, podcast.id)}
+                                                        className={styles.confirmBtn}
+                                                        disabled={deletingIds.has(podcast.id)}
+                                                    >
+                                                        {deletingIds.has(podcast.id) ? '...' : 'Yes'}
+                                                    </button>
+                                                    <button
+                                                        onClick={cancelDelete}
+                                                        className={styles.cancelBtn}
+                                                        disabled={deletingIds.has(podcast.id)}
+                                                    >
+                                                        No
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    className={styles.iconButton}
+                                                    onClick={(event) => handleDeleteClick(event, podcast.id)}
+                                                    title="Delete podcast"
+                                                    disabled={deletingIds.has(podcast.id)}
+                                                >
+                                                    {deletingIds.has(podcast.id) ? <Loader size={18} className={styles.spin} /> : <Trash2 size={18} />}
+                                                </button>
+                                            )
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            </div>
+
+            {canUseLocalFeatures && (
+                <div className={styles.logSection}>
+                    <LogViewer />
                 </div>
             )}
-
-            {/* Backend Logs (Python Server) */}
-            <div style={{ marginTop: '2rem' }}>
-                <LogViewer />
-            </div>
         </div>
     );
+}
+
+function StatusLine({ state }) {
+    if (state.status === 'idle') return null;
+
+    return (
+        <div className={styles.statusLine} data-status={state.status}>
+            {state.status === 'loading' && <Loader size={16} className={styles.spin} />}
+            {state.status === 'success' && <CheckCircle size={16} />}
+            {state.status === 'error' && <AlertTriangle size={16} />}
+            <span>{state.message}</span>
+        </div>
+    );
+}
+
+function readCustomFolders() {
+    if (typeof localStorage === 'undefined') return [];
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(CUSTOM_FOLDERS_KEY) || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return sortFolders([...new Set(parsed.map(normalizeFolder).filter(folder => folder !== DEFAULT_FOLDER))]);
+    } catch {
+        return [];
+    }
+}
+
+function writeCustomFolders(folders) {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(CUSTOM_FOLDERS_KEY, JSON.stringify(sortFolders(folders).filter(folder => folder !== DEFAULT_FOLDER)));
+}
+
+function sortFolders(folders) {
+    return [...new Set(folders.map(normalizeFolder))]
+        .sort((a, b) => {
+            if (a === DEFAULT_FOLDER) return -1;
+            if (b === DEFAULT_FOLDER) return 1;
+            return a.localeCompare(b);
+        });
+}
+
+function compareCreatedDesc(a, b) {
+    return `${b.created_at || ''}`.localeCompare(`${a.created_at || ''}`);
 }

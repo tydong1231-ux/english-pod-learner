@@ -102,6 +102,26 @@ export class PodcastService {
         }
     }
 
+    static async moveFolderContents(fromFolder, toFolder) {
+        const source = normalizeFolder(fromFolder);
+        const target = normalizeFolder(toFolder);
+        const { error } = await supabase
+            .from('podcasts')
+            .update({ folder: target })
+            .eq('folder', source);
+
+        if (error) {
+            if (isMissingFolderColumnError(error)) {
+                throw new Error('The podcasts.folder column is missing. Run docs/supabase-schema.sql in Supabase SQL Editor.');
+            }
+            throw error;
+        }
+    }
+
+    static async renameFolder(fromFolder, toFolder) {
+        await PodcastService.moveFolderContents(fromFolder, toFolder);
+    }
+
     /**
      * Process podcast with WhisperX (primary) or Gemini (fallback)
      */

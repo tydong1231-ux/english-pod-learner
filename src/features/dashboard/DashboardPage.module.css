@@ -2,7 +2,8 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 2rem;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
 }
 
 .subtitle {
@@ -10,13 +11,14 @@
 }
 
 .importButton {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    min-height: 42px;
+    padding: 0 1rem;
     background-color: var(--color-primary);
     color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: var(--radius-full);
+    border-radius: 8px;
     font-weight: 600;
     transition: background-color 0.2s;
 }
@@ -30,61 +32,276 @@
     cursor: default;
 }
 
-.libraryControls {
+.libraryShell {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    gap: 0.75rem;
-    align-items: end;
-    margin: -0.75rem 0 1.5rem;
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
 }
 
-.controlGroup {
+.folderPane {
+    position: sticky;
+    top: 1rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-surface);
+}
+
+.folderPaneHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.35rem 0.45rem 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.folderList {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.2rem;
+    margin-top: 0.35rem;
 }
 
-.controlGroup label {
+.folderItem {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 36px;
+    padding: 0 0.45rem;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: transparent;
+    text-align: left;
+}
+
+.folderItem span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.folderItem strong {
     color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 600;
 }
 
-.controlGroup select,
-.controlGroup input {
-    width: 100%;
-    min-height: 38px;
-    padding: 0.5rem 0.65rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    background: var(--bg-surface);
+.folderItem:hover {
+    background: var(--bg-app);
     color: var(--text-main);
 }
 
-.inlineControl {
+.folderActive {
+    background: rgba(6, 182, 212, 0.12);
+    color: var(--color-primary);
+}
+
+.folderActive strong {
+    color: var(--color-primary);
+}
+
+.newFolderForm {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 34px;
+    gap: 0.4rem;
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.newFolderForm input,
+.renameControl input,
+.searchBox input,
+.compactField select,
+.moveField select {
+    min-width: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--bg-app);
+    color: var(--text-main);
+}
+
+.newFolderForm input {
+    width: 100%;
+    min-height: 34px;
+    padding: 0 0.55rem;
+}
+
+.newFolderForm button,
+.renameControl button,
+.folderActions button,
+.iconButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-app);
+    color: var(--text-secondary);
+}
+
+.newFolderForm button {
+    min-height: 34px;
+}
+
+.newFolderForm button:hover,
+.renameControl button:hover,
+.folderActions button:hover,
+.iconButton:hover {
+    color: var(--text-main);
+    border-color: var(--color-primary);
+}
+
+.newFolderForm button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.contentPane {
+    min-width: 0;
+}
+
+.folderToolbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.4rem;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
 }
 
-.inlineControl button {
-    min-width: 54px;
+.currentFolder {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.currentFolderIcon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 8px;
     background: var(--bg-surface);
+    color: var(--color-primary);
     border: 1px solid var(--border-subtle);
-    color: var(--text-main);
+    flex: 0 0 auto;
 }
 
-.inlineControl button:disabled {
-    opacity: 0.55;
-    cursor: default;
+.currentFolderText {
+    min-width: 0;
+}
+
+.currentFolderText h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.currentFolderText p {
+    margin: 0.15rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.folderActions {
+    display: flex;
+    gap: 0.4rem;
+    margin-left: 0.25rem;
+}
+
+.folderActions button {
+    width: 34px;
+    height: 34px;
+}
+
+.renameControl {
+    display: grid;
+    grid-template-columns: minmax(160px, 280px) 34px 34px;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.renameControl input {
+    min-height: 34px;
+    padding: 0 0.65rem;
+    font-size: 1rem;
+}
+
+.renameControl button {
+    width: 34px;
+    height: 34px;
+}
+
+.toolbarControls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.searchBox {
+    display: grid;
+    grid-template-columns: 16px minmax(120px, 220px);
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 36px;
+    padding: 0 0.65rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-surface);
+    color: var(--text-muted);
+}
+
+.searchBox input {
+    border: none;
+    min-height: 32px;
+    padding: 0;
+    background: transparent;
+}
+
+.searchBox input:focus,
+.compactField select:focus,
+.moveField select:focus,
+.newFolderForm input:focus,
+.renameControl input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.compactField {
+    display: grid;
+    grid-template-columns: auto minmax(105px, 150px);
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.compactField select {
+    min-height: 36px;
+    padding: 0 0.5rem;
+    color: var(--text-main);
 }
 
 .operationStatus {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    margin: -1rem 0 1.5rem;
+    margin-bottom: 1rem;
 }
 
 .statusLine {
@@ -112,73 +329,86 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 4rem;
+    min-height: 280px;
+    padding: 3rem;
     background-color: var(--bg-surface);
-    border-radius: var(--radius-lg);
+    border-radius: 8px;
     border: 1px dashed var(--border-subtle);
     color: var(--text-muted);
+    text-align: center;
+}
+
+.emptyState h3 {
+    margin: 0 0 0.4rem;
+    color: var(--text-main);
+}
+
+.emptyState p {
+    max-width: 620px;
+    margin: 0;
+    line-height: 1.5;
+    word-break: break-word;
 }
 
 .emptyIcon {
     margin-bottom: 1rem;
-    opacity: 0.5;
+    opacity: 0.55;
 }
 
 .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
+    gap: 1rem;
 }
 
 .card {
+    min-width: 0;
     background-color: var(--bg-surface);
-    border-radius: var(--radius-lg);
-    padding: 1.25rem;
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
+    border-radius: 8px;
+    padding: 1rem;
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    gap: 0.85rem;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: all 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
 }
 
 .card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     border-color: var(--border-subtle);
     box-shadow: var(--shadow-md);
 }
 
 .cardIcon {
-    width: 48px;
-    height: 48px;
+    width: 46px;
+    height: 46px;
     background-color: var(--bg-app);
-    border-radius: var(--radius-md);
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: var(--color-primary);
-    flex-shrink: 0;
 }
 
 .cardContent {
-    flex: 1;
     min-width: 0;
 }
 
 .cardTitle {
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.45rem;
     font-size: 1rem;
     font-weight: 600;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .cardMeta {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-size: 0.85rem;
+    gap: 0.55rem;
+    font-size: 0.8rem;
     color: var(--text-muted);
     flex-wrap: wrap;
 }
@@ -188,18 +418,7 @@
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
     background-color: var(--bg-app);
-    font-size: 0.75rem;
-}
-
-.folderSelect {
-    max-width: 130px;
-    min-height: 26px;
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-app);
-    color: var(--text-muted);
-    font-size: 0.75rem;
+    font-size: 0.72rem;
 }
 
 .statusBadge[data-status="PROCESSING"],
@@ -217,60 +436,44 @@
     color: #ef4444;
 }
 
+.moveField {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 150px);
+    align-items: center;
+    gap: 0.35rem;
+    width: max-content;
+    max-width: 100%;
+    margin-top: 0.7rem;
+    color: var(--text-muted);
+}
+
+.moveField select {
+    min-height: 30px;
+    padding: 0 0.45rem;
+    color: var(--text-main);
+    font-size: 0.78rem;
+}
+
 .cardActions {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    align-items: flex-end;
 }
 
 .iconButton {
-    background: none;
-    border: none;
-    cursor: pointer;
-    color: var(--text-secondary);
-    padding: 0.25rem;
-    border-radius: 9999px;
-    transition: all 0.2s;
-    display: flex;
-    /* Ensure icon is centered */
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    /* Ensure clickability */
+    width: 34px;
+    height: 34px;
     opacity: 0;
+    transition: opacity 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.confirmDelete {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    background: var(--bg-card);
-    /* Cover other actions */
-    border-radius: 4px;
-}
-
-.confirmBtn {
-    background: #ef4444;
-    color: white;
-    border: none;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    cursor: pointer;
-}
-
-.cancelBtn {
-    background: var(--bg-hover);
-    color: var(--text-primary);
-    border: none;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    cursor: pointer;
+.card:hover .iconButton,
+.iconButton:focus-visible {
+    opacity: 1;
 }
 
 .iconButton:hover {
-    background-color: var(--bg-app);
     color: #ef4444;
 }
 
@@ -281,8 +484,30 @@
     cursor: default;
 }
 
-.card:hover .iconButton {
-    opacity: 1;
+.confirmDelete {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.confirmBtn,
+.cancelBtn {
+    min-height: 28px;
+    border: none;
+    padding: 0 0.55rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.confirmBtn {
+    background: #ef4444;
+    color: white;
+}
+
+.cancelBtn {
+    background: var(--bg-app);
+    color: var(--text-main);
 }
 
 .spin {
@@ -292,14 +517,81 @@
 .errorText {
     color: #ef4444;
     font-size: 0.75rem;
-    margin-top: 0.25rem;
+    margin-top: 0.4rem;
 }
 
 .progressText {
     color: #22d3ee;
     font-size: 0.75rem;
-    margin-top: 0.25rem;
+    margin-top: 0.4rem;
     font-style: italic;
+}
+
+.logSection {
+    margin-top: 2rem;
+}
+
+@media (max-width: 900px) {
+    .libraryShell {
+        grid-template-columns: 1fr;
+    }
+
+    .folderPane {
+        position: static;
+    }
+
+    .folderList {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+
+    .folderToolbar {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .toolbarControls {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 560px) {
+    .header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .importButton {
+        justify-content: center;
+    }
+
+    .toolbarControls,
+    .compactField {
+        width: 100%;
+    }
+
+    .searchBox {
+        width: 100%;
+        grid-template-columns: 16px minmax(0, 1fr);
+    }
+
+    .compactField {
+        grid-template-columns: 1fr;
+    }
+
+    .card {
+        grid-template-columns: 42px minmax(0, 1fr);
+    }
+
+    .cardActions {
+        grid-column: 1 / -1;
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+
+    .iconButton {
+        opacity: 1;
+    }
 }
 
 @keyframes spin {
