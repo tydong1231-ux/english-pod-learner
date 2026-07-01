@@ -19,6 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { formatSupabaseError, isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { canUseLocalFeatures } from '../../lib/env';
+import { isLocalEngineDisabled } from '../../lib/runtimeConfig';
 import { normalizeFolder, PodcastService, PodcastStatus } from '../../services/podcast';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
@@ -172,7 +173,7 @@ export function DashboardPage() {
 
             fetchPodcasts();
 
-            if (apiKey) {
+            if (canProcessAudio(apiKey)) {
                 const updateLocalStatus = (message) => {
                     setPodcasts(prev => prev.map(podcast => (
                         podcast.id === id
@@ -200,7 +201,7 @@ export function DashboardPage() {
     };
 
     const handleProcess = (podcastId) => {
-        if (!apiKey) {
+        if (!canProcessAudio(apiKey)) {
             navigate('/settings');
             return;
         }
@@ -731,4 +732,8 @@ function sortFolders(folders) {
 
 function compareCreatedDesc(a, b) {
     return `${b.created_at || ''}`.localeCompare(`${a.created_at || ''}`);
+}
+
+function canProcessAudio(apiKey) {
+    return Boolean(apiKey?.trim()) || !isLocalEngineDisabled();
 }

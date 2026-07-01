@@ -2,10 +2,23 @@ import React from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { BookOpen, Library, Settings, Tv } from 'lucide-react';
 import { useStore } from '../store';
+import { isLocalEngineDisabled, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
 import styles from './Layout.module.css';
 
 export function Layout() {
     const { apiKey } = useStore();
+    const [localEngineDisabled, setLocalEngineDisabled] = React.useState(isLocalEngineDisabled);
+
+    React.useEffect(() => {
+        const handleConfigChange = () => {
+            setLocalEngineDisabled(isLocalEngineDisabled());
+        };
+
+        window.addEventListener(RUNTIME_CONFIG_CHANGED, handleConfigChange);
+        return () => window.removeEventListener(RUNTIME_CONFIG_CHANGED, handleConfigChange);
+    }, []);
+
+    const needsGeminiKey = localEngineDisabled && !apiKey;
 
     return (
         <div className={styles.appShell}>
@@ -43,7 +56,7 @@ export function Layout() {
                     >
                         <Settings size={20} />
                         <span>Settings</span>
-                        {!apiKey && <div className={styles.alertDot} />}
+                        {needsGeminiKey && <div className={styles.alertDot} />}
                     </NavLink>
                 </nav >
             </aside >

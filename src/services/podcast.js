@@ -166,8 +166,10 @@ export class PodcastService {
 
             console.log(`Processing ${podcast.title}...`);
             let finalTranscript = null;
+            const localEngineDisabled = isLocalEngineDisabled();
+            const hasGeminiKey = Boolean(apiKey?.trim());
 
-            if (!isLocalEngineDisabled()) {
+            if (!localEngineDisabled) {
                 // Try WhisperX first
                 await setProgress('Checking WhisperX server...');
 
@@ -197,15 +199,30 @@ export class PodcastService {
                         });
                     } catch (whisperError) {
                         console.error('[WhisperX] Failed:', whisperError);
-                        await setProgress('WhisperX failed, falling back to Gemini...');
+                        await setProgress(hasGeminiKey
+                            ? 'WhisperX failed, falling back to Gemini...'
+                            : 'WhisperX failed and Gemini fallback is not configured.');
                     }
+                } else {
+                    await setProgress(hasGeminiKey
+                        ? 'Local WhisperX unavailable, falling back to Gemini...'
+                        : 'Local WhisperX unavailable and Gemini fallback is not configured.');
                 }
             } else {
-                await setProgress('Local engine disabled, using Gemini...');
+                await setProgress(hasGeminiKey
+                    ? 'Local engine disabled, using Gemini...'
+                    : 'Local engine disabled and Gemini API key is missing.');
             }
 
-            // Fallback to Gemini
+            // Fallback to Gemini only when the user configured a key.
             if (!finalTranscript || !finalTranscript.segments || finalTranscript.segments.length === 0) {
+                if (!hasGeminiKey) {
+                    if (localEngineDisabled) {
+                        throw new Error('Gemini API key is required because Local WhisperX Engine is disabled.');
+                    }
+                    throw new Error('Local WhisperX did not produce a transcript. Gemini fallback is not configured, so processing stopped.');
+                }
+
                 await setProgress('Transcribing with Gemini...');
 
                 const gemini = new GeminiService(apiKey, modelName);

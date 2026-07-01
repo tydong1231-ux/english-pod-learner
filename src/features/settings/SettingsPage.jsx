@@ -384,8 +384,9 @@ export function SettingsPage() {
                     </div>
 
                     <p className={styles.description}>
-                        This application uses Google's Gemini API for transcription and vocabulary generation.
-                        Your key is stored locally in your browser and never sent to our servers.
+                        Optional when Local WhisperX Engine is enabled. Required only for Gemini fallback,
+                        Gemini-only transcription, or Gemini vocabulary generation.
+                        Your key is stored locally on this device.
                     </p>
 
                     <div className={styles.inputGroup}>
