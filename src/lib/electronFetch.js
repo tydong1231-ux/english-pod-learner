@@ -110,14 +110,13 @@ async function serializeBody(body) {
     }
 
     if (body instanceof FormData) {
-        // Use the native Response object to serialize FormData to a Blob
-        // This automatically generates the multipart boundary and payload
-        const res = new Response(body);
-        const blob = await res.blob();
+        // Let the browser serialize multipart payloads so the boundary and
+        // binary parts match the platform fetch implementation.
+        const response = new Response(body);
         return {
             type: 'base64',
-            value: arrayBufferToBase64(await blob.arrayBuffer()),
-            contentType: blob.type || 'multipart/form-data',
+            value: arrayBufferToBase64(await response.arrayBuffer()),
+            contentType: response.headers.get('content-type') || undefined,
         };
     }
 

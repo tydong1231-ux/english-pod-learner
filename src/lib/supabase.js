@@ -106,6 +106,8 @@ export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {
     const client = createSupabaseClient(url, anonKey);
     const checks = [];
     let testFilePath = null;
+    let uploadedTestFilePath = null;
+    let publicUrl = null;
     let testPodcastId = null;
 
     const addCheck = async (name, action) => {
@@ -150,15 +152,13 @@ export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {
                 upsert: false,
             });
         if (error) throw error;
+        uploadedTestFilePath = testFilePath;
+        publicUrl = client.storage.from(AUDIO_BUCKET).getPublicUrl(testFilePath).data.publicUrl;
         return { message: `Can upload to ${AUDIO_BUCKET}.` };
     });
 
-    const publicUrl = testFilePath
-        ? client.storage.from(AUDIO_BUCKET).getPublicUrl(testFilePath).data.publicUrl
-        : null;
-
     await addCheck('Public file URL', async () => {
-        if (!publicUrl) throw new Error('Storage upload did not produce a public URL.');
+        if (!publicUrl) throw new Error('Skipped because Storage bucket upload failed. Fix the Storage bucket check first.');
         const response = await electronFetch(publicUrl, { cache: 'no-store' });
         if (!response.ok) {
             throw new Error(`Public file returned HTTP ${response.status}. Make sure ${AUDIO_BUCKET} is public.`);
@@ -194,10 +194,10 @@ export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {
             if (error) cleanupErrors.push(error);
         }
 
-        if (testFilePath) {
+        if (uploadedTestFilePath) {
             const { error } = await client.storage
                 .from(AUDIO_BUCKET)
-                .remove([testFilePath]);
+                .remove([uploadedTestFilePath]);
             if (error) cleanupErrors.push(error);
         }
 
