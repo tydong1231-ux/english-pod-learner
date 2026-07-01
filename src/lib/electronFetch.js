@@ -109,6 +109,18 @@ async function serializeBody(body) {
         };
     }
 
+    if (body instanceof FormData) {
+        // Use the native Response object to serialize FormData to a Blob
+        // This automatically generates the multipart boundary and payload
+        const res = new Response(body);
+        const blob = await res.blob();
+        return {
+            type: 'base64',
+            value: arrayBufferToBase64(await blob.arrayBuffer()),
+            contentType: blob.type || 'multipart/form-data',
+        };
+    }
+
     throw new TypeError(`Unsupported request body type for Electron fetch proxy: ${body.constructor?.name || typeof body}`);
 }
 
