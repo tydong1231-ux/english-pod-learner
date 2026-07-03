@@ -1,7 +1,7 @@
 .container {
     height: 100%;
     overflow-y: auto;
-    padding: 1rem;
+    padding: 1.25rem;
     scroll-behavior: smooth;
 }
 
@@ -15,16 +15,21 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    padding: 0.75rem;
+    margin-bottom: 0.85rem;
+    padding: 0.9rem;
     border-radius: 8px;
-    opacity: 0.6;
-    transition: opacity 0.3s, background-color 0.3s;
+    opacity: 0.72;
+    border: 1px solid transparent;
+    transition: opacity 0.3s, background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
 }
 
 .activeSegment {
     opacity: 1;
-    background-color: rgba(6, 182, 212, 0.05);
+    background:
+        linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(15, 159, 127, 0.04)),
+        rgba(255, 255, 255, 0.78);
+    border-color: rgba(37, 99, 235, 0.16);
+    box-shadow: var(--shadow-sm);
 }
 
 .segmentHeader {
@@ -35,7 +40,7 @@
 }
 
 .time {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     color: var(--text-muted);
     flex-shrink: 0;
@@ -46,7 +51,7 @@
     font-weight: 600;
     color: var(--color-primary);
     padding: 2px 8px;
-    background-color: rgba(6, 182, 212, 0.15);
+    background-color: rgba(37, 99, 235, 0.11);
     border-radius: 4px;
 }
 
@@ -58,7 +63,7 @@
     justify-content: center;
     border-radius: 999px;
     color: var(--text-muted);
-    background: var(--bg-surface);
+    background: rgba(255, 255, 255, 0.84);
     border: 1px solid var(--border-subtle);
     opacity: 0;
     transform: translateX(-4px);
@@ -77,8 +82,8 @@
 
 .text {
     margin: 0;
-    font-size: 1.1rem;
-    line-height: 1.6;
+    font-size: 1.08rem;
+    line-height: 1.72;
     color: var(--text-main);
     cursor: pointer;
 }
@@ -92,12 +97,12 @@
 }
 
 .word:hover {
-    background-color: var(--bg-surface-hover);
+    background-color: rgba(37, 99, 235, 0.1);
     color: var(--color-primary);
 }
 
 .activeWord {
-    background-color: rgba(6, 182, 212, 0.2);
+    background-color: rgba(37, 99, 235, 0.14);
     /* Primary with opacity */
     color: var(--color-primary);
     font-weight: 500;
