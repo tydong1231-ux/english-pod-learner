@@ -45,96 +45,78 @@
 }
 
 .libraryShell {
-    display: grid;
-    grid-template-columns: minmax(210px, 248px) minmax(0, 1fr);
-    gap: 1.1rem;
-    align-items: start;
-}
-
-.folderPane {
-    position: sticky;
-    top: 1rem;
-    padding: 0.65rem;
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    background: var(--bg-surface);
-    box-shadow: var(--shadow-sm);
-    backdrop-filter: blur(18px);
-}
-
-.folderPaneHeader {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.45rem 0.55rem 0.75rem;
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-.folderList {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    margin-top: 0.35rem;
+    gap: 1.1rem;
+    align-items: stretch;
 }
 
-.folderItem {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 18px minmax(0, 1fr) auto;
+.folderTabs {
+    display: flex;
     align-items: center;
-    gap: 0.55rem;
-    min-height: 38px;
-    padding: 0 0.55rem;
-    border-radius: 6px;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-md);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.folderTabs::-webkit-scrollbar {
+    display: none;
+}
+
+.tabItem {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.8rem;
+    border-radius: 8px;
     color: var(--text-secondary);
     background: transparent;
-    text-align: left;
     font-weight: 600;
-    transition: background-color 0.18s, color 0.18s, box-shadow 0.18s;
-}
-
-.folderItem span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 0.9rem;
     white-space: nowrap;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.18s, color 0.18s;
 }
 
-.folderItem strong {
-    color: var(--text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.folderItem:hover {
+.tabItem:hover {
     background: rgba(255, 255, 255, 0.86);
     color: var(--text-main);
-    box-shadow: var(--shadow-sm);
 }
 
-.folderActive {
-    background:
-        linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(15, 159, 127, 0.08)),
-        white;
+.tabActive {
+    background: rgba(37, 99, 235, 0.12);
     color: var(--color-primary);
-    box-shadow: var(--shadow-sm);
 }
 
-.folderActive strong {
-    color: var(--color-primary);
+.tabCount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.4rem;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.05);
+    font-size: 0.75rem;
+    color: inherit;
+    margin-left: 0.2rem;
+}
+
+.tabActive .tabCount {
+    background: rgba(37, 99, 235, 0.15);
 }
 
 .newFolderForm {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 34px;
+    display: flex;
+    align-items: center;
     gap: 0.4rem;
-    margin-top: 0.8rem;
-    padding-top: 0.8rem;
-    border-top: 1px solid var(--border-subtle);
+    margin-left: auto;
+    padding-left: 0.5rem;
+    border-left: 1px solid var(--border-subtle);
 }
 
 .newFolderForm input,
@@ -478,22 +460,38 @@
     color: var(--color-danger);
 }
 
-.moveField {
-    display: grid;
-    grid-template-columns: 14px minmax(0, 150px);
+.moveFieldWrapper {
+    position: relative;
+    display: flex;
     align-items: center;
-    gap: 0.35rem;
-    width: max-content;
-    max-width: 100%;
-    margin-top: 0.7rem;
-    color: var(--text-muted);
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    background: transparent;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
 }
 
-.moveField select {
-    min-height: 30px;
-    padding: 0 0.45rem;
-    color: var(--text-main);
-    font-size: 0.78rem;
+.card:hover .moveFieldWrapper,
+.moveFieldWrapper:focus-within {
+    opacity: 1;
+}
+
+.moveFieldWrapper:hover {
+    background: rgba(255, 255, 255, 0.8);
+    color: var(--color-primary);
+}
+
+.moveSelect {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
 }
 
 .cardActions {
@@ -652,5 +650,75 @@
 
     to {
         transform: rotate(360deg);
+    }
+}
+
+.mobileFolderControls {
+    display: none;
+}
+
+@media (max-width: 560px) {
+    .folderTabs {
+        display: none;
+    }
+    .mobileFolderControls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: var(--bg-surface);
+        border-radius: 12px;
+        box-shadow: var(--shadow-sm);
+        border: 1px solid rgba(0,0,0,0.05);
+    }
+    .mobileSelectWrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        background: rgba(37, 99, 235, 0.08);
+        border-radius: 8px;
+        padding: 0 0.75rem;
+        border: 1px solid rgba(37, 99, 235, 0.15);
+    }
+    .mobileSelectIcon {
+        color: var(--color-primary);
+        margin-right: 0.5rem;
+    }
+    .mobileSelect {
+        flex: 1;
+        min-height: 42px;
+        background: transparent;
+        border: none;
+        color: var(--color-primary);
+        font-weight: 700;
+        font-size: 1rem;
+        outline: none;
+        /* Custom arrow via CSS or native is fine, let native render on mobile */
+    }
+    .mobileNewFolderForm {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .mobileNewFolderForm input {
+        flex: 1;
+        min-height: 40px;
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+        padding: 0 0.75rem;
+        background: rgba(255, 255, 255, 0.8);
+    }
+    .mobileNewFolderForm button {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        background: var(--color-primary);
+        color: white;
+        border: none;
+    }
+    .mobileNewFolderForm button:disabled {
+        opacity: 0.5;
     }
 }

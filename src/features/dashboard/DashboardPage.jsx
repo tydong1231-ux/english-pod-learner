@@ -537,38 +537,33 @@ export function DashboardPage() {
             </header>
 
             <div className={styles.libraryShell}>
-                <aside className={styles.folderPane}>
-                    <div className={styles.folderPaneHeader}>
-                        <span>Folders</span>
-                    </div>
-
+                {/* Desktop Tabs */}
+                <div className={styles.folderTabs}>
                     <button
                         type="button"
-                        className={`${styles.folderItem} ${selectedFolder === ALL_FOLDERS ? styles.folderActive : ''}`}
+                        className={`${styles.tabItem} ${selectedFolder === ALL_FOLDERS ? styles.tabActive : ''}`}
                         onClick={() => setSelectedFolder(ALL_FOLDERS)}
                     >
-                        <FolderOpen size={18} />
+                        <FolderOpen size={16} />
                         <span>All Podcasts</span>
-                        <strong>{podcasts.length}</strong>
+                        <span className={styles.tabCount}>{podcasts.length}</span>
                     </button>
 
-                    <div className={styles.folderList}>
-                        {folders.map((folder) => {
-                            const isActive = selectedFolder === folder;
-                            return (
-                                <button
-                                    type="button"
-                                    key={folder}
-                                    className={`${styles.folderItem} ${isActive ? styles.folderActive : ''}`}
-                                    onClick={() => setSelectedFolder(folder)}
-                                >
-                                    {isActive ? <FolderOpen size={18} /> : <Folder size={18} />}
-                                    <span>{folder}</span>
-                                    <strong>{folderCounts.get(folder) || 0}</strong>
-                                </button>
-                            );
-                        })}
-                    </div>
+                    {folders.map((folder) => {
+                        const isActive = selectedFolder === folder;
+                        return (
+                            <button
+                                type="button"
+                                key={folder}
+                                className={`${styles.tabItem} ${isActive ? styles.tabActive : ''}`}
+                                onClick={() => setSelectedFolder(folder)}
+                            >
+                                {isActive ? <FolderOpen size={16} /> : <Folder size={16} />}
+                                <span>{folder}</span>
+                                <span className={styles.tabCount}>{folderCounts.get(folder) || 0}</span>
+                            </button>
+                        );
+                    })}
 
                     <form className={styles.newFolderForm} onSubmit={handleCreateFolder}>
                         <input
@@ -585,7 +580,35 @@ export function DashboardPage() {
                             <Plus size={16} />
                         </button>
                     </form>
-                </aside>
+                </div>
+
+                {/* Mobile Dropdown & New Folder */}
+                <div className={styles.mobileFolderControls}>
+                    <div className={styles.mobileSelectWrapper}>
+                        <FolderOpen size={18} className={styles.mobileSelectIcon} />
+                        <select
+                            className={styles.mobileSelect}
+                            value={selectedFolder}
+                            onChange={(e) => setSelectedFolder(e.target.value)}
+                        >
+                            <option value={ALL_FOLDERS}>All Podcasts ({podcasts.length})</option>
+                            {folders.map(folder => (
+                                <option key={folder} value={folder}>{folder} ({folderCounts.get(folder) || 0})</option>
+                            ))}
+                        </select>
+                    </div>
+                    <form className={styles.mobileNewFolderForm} onSubmit={handleCreateFolder}>
+                        <input
+                            value={newFolderName}
+                            onChange={(event) => setNewFolderName(event.target.value)}
+                            placeholder="New folder..."
+                            aria-label="New folder"
+                        />
+                        <button type="submit" disabled={!newFolderName.trim()}>
+                            <Plus size={18} />
+                        </button>
+                    </form>
+                </div>
 
                 <section className={styles.contentPane}>
                     <div className={styles.folderToolbar}>
@@ -730,17 +753,6 @@ export function DashboardPage() {
                                                 {podcast.status}
                                             </span>
                                         </div>
-                                        <label className={styles.moveField} onClick={(event) => event.stopPropagation()}>
-                                            <Folder size={14} />
-                                            <select
-                                                value={normalizeFolder(podcast.folder)}
-                                                onChange={(event) => handleFolderChange(podcast.id, event.target.value)}
-                                            >
-                                                {folders.map(folder => (
-                                                    <option key={folder} value={folder}>{folder}</option>
-                                                ))}
-                                            </select>
-                                        </label>
                                         {podcast.status === PodcastStatus.PROCESSING && podcast.progress && (
                                             <p className={styles.progressText}>{podcast.progress}</p>
                                         )}
@@ -750,6 +762,18 @@ export function DashboardPage() {
                                     </div>
 
                                     <div className={styles.cardActions}>
+                                        <div className={styles.moveFieldWrapper} title="Change folder" onClick={(event) => event.stopPropagation()}>
+                                            <Folder size={16} />
+                                            <select
+                                                value={normalizeFolder(podcast.folder)}
+                                                onChange={(event) => handleFolderChange(podcast.id, event.target.value)}
+                                                className={styles.moveSelect}
+                                            >
+                                                {folders.map(folder => (
+                                                    <option key={folder} value={folder}>{folder}</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                         {podcast.status !== PodcastStatus.READY && canUseLocalFeatures && (
                                             <button
                                                 className={styles.iconButton}

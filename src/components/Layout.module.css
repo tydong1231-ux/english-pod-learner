@@ -137,34 +137,58 @@
     }
 
     .sidebar {
+        order: 3; /* Move to the bottom of the column */
         width: 100%;
         flex: 0 0 auto;
         flex-direction: row;
         align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem;
+        justify-content: space-around;
+        padding: 0.5rem;
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
         border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        overflow-x: auto;
+        border-top: 1px solid rgba(0,0,0,0.05);
+        border-bottom: none;
+        background: var(--bg-surface-solid);
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.04);
+        z-index: 50;
+        overflow-x: visible;
     }
 
     .logo {
-        flex: 0 0 auto;
-        padding-bottom: 0;
-        font-size: 1rem;
+        display: none; /* Hide logo on mobile bottom nav */
     }
 
     .nav {
-        flex: 0 0 auto;
+        flex: 1;
         flex-direction: row;
+        justify-content: space-around;
         align-items: center;
-        gap: 0.35rem;
+        gap: 0;
     }
 
     .navItem {
-        min-height: 40px;
-        padding: 0 0.7rem;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-height: auto;
+        padding: 0.4rem 0.5rem;
+        border-radius: 12px;
+        flex: 1;
+        text-align: center;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: var(--text-muted);
+    }
+
+    .navItem span {
+        display: block !important;
+        font-size: 0.72rem;
+        font-weight: 600;
         white-space: nowrap;
+    }
+
+    .active {
+        color: var(--color-primary);
+        background: transparent !important;
     }
 
     .spacer {
@@ -175,19 +199,22 @@
         flex: 1;
         min-height: 0;
         padding: 1rem;
+        padding-bottom: 2rem;
         overflow-y: auto;
+    }
+
+    .alertDot {
+        position: absolute;
+        top: 4px;
+        right: 50%;
+        margin-right: -16px;
+    }
+    
+    .navItem {
+        position: relative;
     }
 }
 
 @media (max-width: 430px) {
-    .logo span,
-    .navItem span {
-        display: none;
-    }
-
-    .navItem {
-        width: 42px;
-        justify-content: center;
-        padding: 0;
-    }
+    /* Logo and text hiding removed, already handled in 760px query for the bottom tab bar design */
 }
