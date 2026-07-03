@@ -8,10 +8,12 @@ import {
     Folder,
     FolderOpen,
     Loader,
+    Moon,
     Pencil,
     Play,
     Plus,
     Search,
+    Sun,
     Trash2,
     Upload,
     X,
@@ -48,7 +50,7 @@ export function DashboardPage() {
     const [renameValue, setRenameValue] = useState('');
     const [sortMode, setSortMode] = useState('created_desc');
     const [searchQuery, setSearchQuery] = useState('');
-    const { apiKey, geminiModel, transcriptionPrompt } = useStore();
+    const { apiKey, geminiModel, transcriptionPrompt, theme, setTheme } = useStore();
     const fileInputRef = useRef(null);
     const processingQueueRef = useRef([]);
     const processingIdsRef = useRef(new Set());
@@ -516,16 +518,26 @@ export function DashboardPage() {
                     <h1>Library</h1>
                     <p className={styles.subtitle}>{podcasts.length} podcasts across {folders.length} folders</p>
                 </div>
-                {canUseLocalFeatures && (
+                <div className={styles.headerActions}>
                     <button
-                        className={styles.importButton}
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadState.status === 'loading'}
+                        type="button"
+                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                        className={styles.themeToggleBtn}
+                        title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
                     >
-                        {uploadState.status === 'loading' ? <Loader size={20} className={styles.spin} /> : <Upload size={20} />}
-                        {uploadState.status === 'loading' ? 'Uploading' : 'Import Podcast'}
+                        {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
                     </button>
-                )}
+                    {canUseLocalFeatures && (
+                        <button
+                            className={styles.importButton}
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadState.status === 'loading'}
+                        >
+                            {uploadState.status === 'loading' ? <Loader size={20} className={styles.spin} /> : <Upload size={20} />}
+                            {uploadState.status === 'loading' ? 'Uploading' : 'Import Podcast'}
+                        </button>
+                    )}
+                </div>
                 <input
                     type="file"
                     ref={fileInputRef}

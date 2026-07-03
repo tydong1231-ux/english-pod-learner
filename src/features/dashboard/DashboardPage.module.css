@@ -6,6 +6,32 @@
     margin-bottom: 1.25rem;
 }
 
+.headerActions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.themeToggleBtn {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-surface-solid);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.18s;
+}
+
+.themeToggleBtn:hover {
+    background: var(--bg-surface-hover);
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+}
+
 .header h1 {
     margin: 0;
     font-family: var(--font-display);
@@ -597,8 +623,15 @@
         flex-direction: column;
     }
 
+    .headerActions {
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+
     .importButton {
         justify-content: center;
+        width: 100%;
     }
 
     .toolbarControls,
