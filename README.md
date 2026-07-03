@@ -10,7 +10,8 @@ PodFluent is a desktop-first English podcast learning app. Import an audio or vi
 - Optional speaker diarization with a Hugging Face token.
 - Gemini fallback transcription for when the local engine is unavailable.
 - Click-to-learn vocabulary cards with definitions, examples, translations, and speech synthesis.
-- Remote read access through Cloudflare Tunnel, protected by an environment-configured password gate.
+- Cloud web read access through Cloudflare Pages, backed directly by Supabase.
+- Optional local-network remote access through Cloudflare Tunnel.
 
 ## Requirements
 
@@ -20,7 +21,7 @@ PodFluent is a desktop-first English podcast learning app. Import an audio or vi
 - Gemini API key
 - Optional: CUDA-capable GPU for fast WhisperX
 - Optional: Hugging Face token for pyannote speaker diarization
-- Optional: Cloudflare Tunnel for remote access
+- Optional: Cloudflare account for Pages hosting or Tunnel remote access
 
 ## Setup
 
@@ -90,7 +91,7 @@ Build the app:
 npm run build
 ```
 
-Build the web bundle:
+Build the cloud web bundle:
 
 ```bash
 npm run build:web
@@ -102,17 +103,44 @@ Lint:
 npm run lint
 ```
 
-## Remote Access
+## Cloud Web Deployment
 
-Remote access is optional. Configure your own Cloudflare Tunnel credentials, then copy and edit `cloudflared-config.yml` into your Cloudflare config location.
+Use Cloudflare Pages when you want a hosted web app that does not depend on
+your local computer being on. The web app reads podcast data, transcripts,
+vocabulary, and public audio URLs directly from Supabase.
 
-The web build requires:
+Cloudflare Pages settings:
+
+```text
+Build command: npm run build:web
+Build output directory: dist-web
+```
+
+Required Pages environment variables:
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_REMOTE_ACCESS_PASSWORD=
+```
+
+For details, see [docs/cloudflare-pages.md](docs/cloudflare-pages.md).
+
+## Cloudflare Tunnel Remote Access
+
+Cloudflare Tunnel is optional and only needed when you want to expose the app
+running on your local machine. Configure your own Cloudflare Tunnel
+credentials, then copy and edit `cloudflared-config.yml` into your Cloudflare
+config location.
+
+The tunnel/web route requires:
 
 ```env
 VITE_REMOTE_ACCESS_PASSWORD=
 ```
 
-This password gate protects the frontend route. If you expose the Python API directly, add additional network or Cloudflare access controls.
+This password gate protects the frontend route. If you expose the Python API
+directly, add additional network or Cloudflare access controls.
 
 ## Project Structure
 

@@ -696,7 +696,13 @@ export function DashboardPage() {
                                 <FileAudio size={48} />
                             </div>
                             <h3>No podcasts here</h3>
-                            <p>{searchQuery ? 'Try a different search.' : 'Import an audio file or choose another folder.'}</p>
+                            <p>
+                                {searchQuery
+                                    ? 'Try a different search.'
+                                    : canUseLocalFeatures
+                                        ? 'Import an audio file or choose another folder.'
+                                        : 'Processed podcasts from Supabase will appear here.'}
+                            </p>
                         </div>
                     ) : (
                         <div className={styles.grid}>
