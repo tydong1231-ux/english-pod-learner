@@ -32,12 +32,13 @@
     padding: 0 0.75rem;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.74);
-    color: var(--text-muted);
+    background: var(--bg-surface-solid);
+    color: var(--text-main);
     display: flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.9rem;
+    font-weight: 500;
 }
 
 .backBtn:hover {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { BookOpen, Library, Settings, Tv } from 'lucide-react';
 import { useStore } from '../store';
 import { isLocalEngineDisabled, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
@@ -8,6 +8,9 @@ import styles from './Layout.module.css';
 export function Layout() {
     const { apiKey } = useStore();
     const [localEngineDisabled, setLocalEngineDisabled] = React.useState(isLocalEngineDisabled);
+    const location = useLocation();
+    
+    const isPlayerPage = location.pathname.startsWith('/player');
 
     React.useEffect(() => {
         const handleConfigChange = () => {
@@ -25,7 +28,7 @@ export function Layout() {
             {/* Draggable Area */}
             <div className={styles.dragRegion} />
 
-            <aside className={styles.sidebar}>
+            <aside className={`${styles.sidebar} ${isPlayerPage ? styles.sidebarHiddenOnMobile : ''}`}>
                 <div className={styles.logo}>
                     <Tv className={styles.logoIcon} />
                     <span>PodFluent</span>

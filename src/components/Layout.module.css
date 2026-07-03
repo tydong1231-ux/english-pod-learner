@@ -213,6 +213,10 @@
     .navItem {
         position: relative;
     }
+    
+    .sidebarHiddenOnMobile {
+        display: none !important;
+    }
 }
 
 @media (max-width: 430px) {
