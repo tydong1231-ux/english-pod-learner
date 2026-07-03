@@ -28,6 +28,9 @@ export const useStore = create(
             // UI State
             isSidebarOpen: false,
             toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+            
+            theme: 'system', // 'light', 'dark', 'system'
+            setTheme: (t) => set({ theme: t }),
 
             // Custom Prompts & Settings
             transcriptionPrompt: '',
@@ -68,7 +71,8 @@ export const useStore = create(
                 openaiBaseUrl: state.openaiBaseUrl,
                 openaiModel: state.openaiModel,
                 whisperModel: state.whisperModel,
-                remoteAccessEnabled: state.remoteAccessEnabled
+                remoteAccessEnabled: state.remoteAccessEnabled,
+                theme: state.theme
             }),
             merge: (persistedState, currentState) => {
                 const persisted = persistedState || {};

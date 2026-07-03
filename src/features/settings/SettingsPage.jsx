@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu, Loader, Trash2, HardDrive } from 'lucide-react';
+import { Save, Key, CheckCircle, AlertCircle, FileText, RefreshCcw, Database, Shield, Cpu, Loader, Trash2, HardDrive, Monitor } from 'lucide-react';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
 import { canUseLocalFeatures } from '../../lib/env';
@@ -28,7 +28,9 @@ export function SettingsPage() {
         whisperModel,
         setWhisperModel,
         remoteAccessEnabled,
-        setRemoteAccessEnabled
+        setRemoteAccessEnabled,
+        theme,
+        setTheme
     } = useStore();
     const runtimeConfig = getRuntimeConfig();
     const [inputKey, setInputKey] = useState(apiKey || '');
@@ -216,6 +218,29 @@ export function SettingsPage() {
             </header>
 
             <div className={styles.card}>
+                {/* Appearance Section */}
+                <div className={styles.section}>
+                    <div className={styles.sectionHeader}>
+                        <Monitor className={styles.icon} />
+                        <h2>Appearance</h2>
+                    </div>
+                    <p className={styles.description}>
+                        Choose your preferred theme for the app interface.
+                    </p>
+                    <div className={styles.inputGroup}>
+                        <label>Theme</label>
+                        <select
+                            value={theme || 'system'}
+                            onChange={(e) => setTheme(e.target.value)}
+                            className={styles.input}
+                        >
+                            <option value="system">System (Auto)</option>
+                            <option value="light">Light Mode</option>
+                            <option value="dark">Dark Mode</option>
+                        </select>
+                    </div>
+                </div>
+
                 {/* App Connection Section */}
                 <div className={styles.section}>
                     <div className={styles.sectionHeader}>

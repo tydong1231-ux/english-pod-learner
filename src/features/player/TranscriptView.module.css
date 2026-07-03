@@ -27,7 +27,7 @@
     opacity: 1;
     background:
         linear-gradient(90deg, rgba(37, 99, 235, 0.08), rgba(15, 159, 127, 0.04)),
-        rgba(255, 255, 255, 0.78);
+        var(--bg-nav-active-base);
     border-color: rgba(37, 99, 235, 0.16);
     box-shadow: var(--shadow-sm);
 }
@@ -63,7 +63,7 @@
     justify-content: center;
     border-radius: 999px;
     color: var(--text-muted);
-    background: rgba(255, 255, 255, 0.84);
+    background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     opacity: 0;
     transform: translateX(-4px);

@@ -8,9 +8,11 @@ import { SettingsPage } from './features/settings/SettingsPage';
 import { VocabularyPage } from './features/vocabulary/VocabularyPage';
 import { isRemoteAccess } from './lib/env';
 import { loadRuntimeEnvConfig } from './lib/runtimeConfig';
+import { useStore } from './store';
 
 function App() {
   const [configReady, setConfigReady] = useState(false);
+  const theme = useStore((state) => state.theme);
 
   useEffect(() => {
     let cancelled = false;
@@ -21,6 +23,27 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const applyTheme = (resolvedTheme) => {
+      if (resolvedTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    };
+
+    if (theme === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      applyTheme(mediaQuery.matches ? 'dark' : 'light');
+      
+      const listener = (e) => applyTheme(e.matches ? 'dark' : 'light');
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    } else {
+      applyTheme(theme);
+    }
+  }, [theme]);
 
   if (!configReady) return null;
 

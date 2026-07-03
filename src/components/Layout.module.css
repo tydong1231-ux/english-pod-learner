@@ -2,7 +2,7 @@
     display: flex;
     height: 100vh;
     background:
-        linear-gradient(90deg, rgba(255, 255, 255, 0.88), rgba(246, 248, 251, 0.86)),
+        linear-gradient(90deg, var(--bg-gradient-app-start), var(--bg-gradient-app-end)),
         var(--bg-primary);
     color: var(--text-primary);
     overflow: hidden;
@@ -26,7 +26,7 @@
 .sidebar {
     width: 248px;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 248, 252, 0.82)),
+        linear-gradient(180deg, var(--bg-gradient-sidebar-start), var(--bg-gradient-sidebar-end)),
         var(--bg-secondary);
     border-right: 1px solid var(--border-color);
     display: flex;
@@ -34,7 +34,7 @@
     padding: 1.25rem;
     padding-top: 2.5rem;
     backdrop-filter: blur(22px);
-    box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.7);
+    box-shadow: var(--sidebar-shadow-inset);
     /* Add padding for the drag region */
 }
 
@@ -81,7 +81,7 @@
 }
 
 .navItem:hover {
-    background-color: rgba(255, 255, 255, 0.72);
+    background-color: var(--bg-nav-hover);
     color: var(--text-primary);
     box-shadow: var(--shadow-sm);
 }
@@ -89,7 +89,7 @@
 .active {
     background:
         linear-gradient(90deg, rgba(37, 99, 235, 0.12), rgba(15, 159, 127, 0.08)),
-        rgba(255, 255, 255, 0.86);
+        var(--bg-nav-active-base);
     color: var(--accent-color);
     box-shadow: var(--shadow-sm);
 }
@@ -146,10 +146,10 @@
         padding: 0.5rem;
         padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
         border-right: none;
-        border-top: 1px solid rgba(0,0,0,0.05);
+        border-top: 1px solid var(--mobile-tab-border);
         border-bottom: none;
         background: var(--bg-surface-solid);
-        box-shadow: 0 -4px 20px rgba(0,0,0,0.04);
+        box-shadow: var(--mobile-tab-shadow);
         z-index: 50;
         overflow-x: visible;
     }

@@ -1,4 +1,14 @@
 :root {
+  --bg-gradient-app-start: rgba(255, 255, 255, 0.88);
+  --bg-gradient-app-end: rgba(246, 248, 251, 0.86);
+  --bg-gradient-sidebar-start: rgba(255, 255, 255, 0.72);
+  --bg-gradient-sidebar-end: rgba(245, 248, 252, 0.82);
+  --bg-nav-hover: rgba(255, 255, 255, 0.72);
+  --bg-nav-active-base: rgba(255, 255, 255, 0.86);
+  --sidebar-shadow-inset: inset -1px 0 0 rgba(255, 255, 255, 0.7);
+  --mobile-tab-border: rgba(0,0,0,0.05);
+  --mobile-tab-shadow: 0 -4px 20px rgba(0,0,0,0.04);
+
   /* PodFluent Cloud Console Palette */
   --bg-app: #f6f8fb;
   --bg-surface: rgba(255, 255, 255, 0.88);
@@ -57,13 +67,58 @@
   --primary: var(--color-primary);
 }
 
+[data-theme="dark"] {
+  --bg-gradient-app-start: rgba(24, 24, 27, 0.6);
+  --bg-gradient-app-end: rgba(9, 9, 11, 0.8);
+  --bg-gradient-sidebar-start: rgba(39, 39, 42, 0.5);
+  --bg-gradient-sidebar-end: rgba(24, 24, 27, 0.6);
+  --bg-nav-hover: rgba(63, 63, 70, 0.4);
+  --bg-nav-active-base: rgba(39, 39, 42, 0.8);
+  --sidebar-shadow-inset: inset -1px 0 0 rgba(255, 255, 255, 0.05);
+  --mobile-tab-border: rgba(255,255,255,0.05);
+  --mobile-tab-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+
+  --bg-app: #09090b;
+  --bg-surface: rgba(24, 24, 27, 0.88);
+  --bg-surface-solid: #18181b;
+  --bg-surface-hover: #27272a;
+  --bg-elevated: rgba(39, 39, 42, 0.74);
+
+  --color-primary: #3b82f6;
+  --color-primary-hover: #60a5fa;
+  --color-accent: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-success: #10b981;
+
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --text-soft: #71717a;
+  --text-inverse: #000000;
+
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.5), 0 10px 24px rgba(0, 0, 0, 0.3);
+  --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.4);
+  
+  --audio-rail: repeating-linear-gradient(
+    90deg,
+    rgba(59, 130, 246, 0.25) 0 2px,
+    transparent 2px 8px,
+    rgba(16, 185, 129, 0.25) 8px 10px,
+    transparent 10px 16px
+  );
+}
+
 body {
   min-width: 320px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(246, 248, 251, 0.92)),
-    radial-gradient(circle at 18% 10%, rgba(37, 99, 235, 0.09), transparent 28%),
-    radial-gradient(circle at 88% 4%, rgba(15, 159, 127, 0.08), transparent 24%),
-    var(--bg-app);
+  background-color: var(--bg-app);
+  background-image: 
+    radial-gradient(circle at 18% 10%, rgba(37, 99, 235, 0.05), transparent 28%),
+    radial-gradient(circle at 88% 4%, rgba(15, 159, 127, 0.05), transparent 24%);
   color: var(--text-main);
   font-family: var(--font-family);
   margin: 0;

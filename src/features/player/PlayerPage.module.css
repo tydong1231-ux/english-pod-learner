@@ -10,7 +10,7 @@
     right: 0;
     bottom: 0;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 248, 251, 0.94)),
+        linear-gradient(180deg, var(--bg-gradient-app-start), var(--bg-gradient-app-end)),
         var(--bg-app);
     z-index: 10;
 }
@@ -21,7 +21,7 @@
     display: flex;
     align-items: center;
     padding: 0 1.5rem;
-    background: rgba(255, 255, 255, 0.84);
+    background: var(--bg-surface);
     backdrop-filter: blur(18px);
     gap: 1rem;
     box-shadow: var(--shadow-sm);
@@ -42,7 +42,7 @@
 
 .backBtn:hover {
     color: var(--text-main);
-    background: white;
+    background: var(--bg-surface-solid);
     box-shadow: var(--shadow-sm);
 }
 
@@ -82,7 +82,7 @@
 /* Vocab Sidebar */
 .vocabPanel {
     width: 360px;
-    background: rgba(255, 255, 255, 0.92);
+    background: var(--bg-surface);
     border-left: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
@@ -174,7 +174,7 @@
 /* Player Bar */
 .playerBar {
     height: 96px;
-    background: rgba(255, 255, 255, 0.9);
+    background: var(--bg-surface);
     border-top: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
@@ -233,7 +233,7 @@
 }
 
 .controls button:hover {
-    background: white;
+    background: var(--bg-surface-solid);
     box-shadow: var(--shadow-sm);
 }
 
