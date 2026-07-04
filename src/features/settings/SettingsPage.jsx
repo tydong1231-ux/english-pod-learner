@@ -622,8 +622,8 @@ export function SettingsPage() {
                             <h2>Remote Access</h2>
                         </div>
                         <p className={styles.description}>
-                            Allow accessing this app from other devices via <b>podcast.botly.cn</b>.
-                            <br /><i>Requires setup of Cloudflare Tunnel credentials.</i>
+                            Allow other devices to access this local desktop app through your Cloudflare Tunnel.
+                            <br /><i>Configure your own tunnel hostname and credentials before enabling this.</i>
                         </p>
                         <div className={styles.inputGroup}>
                             <label>Tunnel Status</label>

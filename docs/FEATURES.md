@@ -464,8 +464,8 @@ flowchart LR
 - Settings 中启用 Remote Access 后，Electron 通过 IPC 启动 `cloudflared tunnel run podfluent`。
 - 打包生产模式下，Electron 会启动本地静态 HTTP 服务，监听 `0.0.0.0:5173`。
 - `cloudflared-config.yml` 映射：
-  - `podcast.botly.cn` -> `localhost:5173`
-  - `api.botly.cn` -> `localhost:8765`
+  - `podcast.example.com` -> `localhost:5173`
+  - `api.example.com` -> `localhost:8765`
 
 涉及文件：
 
@@ -606,7 +606,7 @@ Bucket：
 1. 用户在 Settings 设置 Remote Access 为 Enabled。
 2. 前端通过 Electron IPC 发送 `toggle-remote-access`。
 3. Electron 主进程启动 `cloudflared tunnel run podfluent`。
-4. 外部设备访问 `podcast.botly.cn`。
+4. 外部设备访问你的 Cloudflare Tunnel hostname。
 5. Web 环境先进入 PasswordGate。
 6. 密码通过后访问已处理内容。
 

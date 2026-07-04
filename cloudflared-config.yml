@@ -7,13 +7,13 @@ credentials-file: C:\Users\<you>\.cloudflared\<your-tunnel-credentials>.json
 
 ingress:
   # Frontend - Vite dev server or packaged static server.
-  - hostname: podcast.botly.cn
+  - hostname: podcast.example.com
     service: http://localhost:5173
     originRequest:
       noTLSVerify: true
 
   # Backend API - WhisperX service.
-  - hostname: api.botly.cn
+  - hostname: api.example.com
     service: http://localhost:8765
     originRequest:
       noTLSVerify: true

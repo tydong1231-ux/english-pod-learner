@@ -31,6 +31,7 @@ dist-web/
 .env.*
 !.env.example
 .cloudflared/
+.wrangler/
 *.pem
 
 # Local prototypes / generated artifacts kept out of the main app

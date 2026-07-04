@@ -13,7 +13,8 @@ URLs directly from Supabase.
 - Open processed podcasts and play audio from Supabase Storage.
 - Read timestamped transcripts from Supabase.
 - Search, sort, and browse folders.
-- Generate vocabulary cards if a web-reachable AI provider key is configured.
+- Generate vocabulary cards only when the viewer configures a browser-side AI
+  key locally, or when you add your own backend proxy.
 
 ## What Stays Local
 
@@ -54,18 +55,22 @@ Root directory: /
 Environment variables:
 
 ```env
+NODE_VERSION=22.12.0
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 VITE_REMOTE_ACCESS_PASSWORD=choose-a-password
 VITE_VOCAB_PROVIDER=gemini
-VITE_GEMINI_API_KEY=
-VITE_OPENAI_API_KEY=
 VITE_OPENAI_BASE_URL=https://api.openai.com/v1
 VITE_OPENAI_MODEL=gpt-4o-mini
 ```
 
 `VITE_REMOTE_ACCESS_PASSWORD` is strongly recommended. It protects the frontend
 route. It is not a replacement for Supabase RLS.
+
+Do not put long-lived AI provider API keys in Cloudflare Pages `VITE_*`
+variables for an untrusted public site. Vite embeds `VITE_*` values into the
+browser bundle. For a public deployment, prefer a backend proxy, Supabase Edge
+Function, or let each trusted viewer enter their own key in Settings.
 
 After changing any `VITE_*` variable in Cloudflare Pages, redeploy the project.
 Vite embeds these values at build time.

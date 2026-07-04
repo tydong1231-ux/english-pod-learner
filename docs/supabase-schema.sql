@@ -1,6 +1,9 @@
 -- PodFluent Supabase starter schema.
--- This is suitable for a private personal deployment. Review RLS policies
--- before exposing the app to other users.
+-- WARNING:
+-- This schema is suitable for a private personal deployment. The included RLS
+-- policies intentionally allow broad anon-key access so the local-first app can
+-- work without Supabase Auth. Tighten policies before exposing a shared/public
+-- instance or storing sensitive content.
 
 create extension if not exists "pgcrypto";
 

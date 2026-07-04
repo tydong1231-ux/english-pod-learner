@@ -2,6 +2,10 @@
 
 PodFluent is a desktop-first English podcast learning app. Import an audio or video file, transcribe it with a local WhisperX engine or Gemini fallback, follow timestamped subtitles while listening, and turn clicked words into vocabulary cards.
 
+It is best suited for personal learning libraries and self-hosted deployments.
+The Electron desktop app handles importing/transcription; the Cloudflare Pages
+build can read already-processed Supabase data from any device.
+
 ## Features
 
 - Local Electron desktop app with React and Vite.
@@ -15,13 +19,31 @@ PodFluent is a desktop-first English podcast learning app. Import an audio or vi
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 22.12.0 or newer
 - Python 3.10 or 3.11
 - Supabase project
-- Gemini API key
+- Optional: Gemini API key for fallback transcription or Gemini vocabulary
 - Optional: CUDA-capable GPU for fast WhisperX
 - Optional: Hugging Face token for pyannote speaker diarization
 - Optional: Cloudflare account for Pages hosting or Tunnel remote access
+
+## Quick Start
+
+```bash
+git clone https://github.com/tydong1231-ux/english-pod-learner.git
+cd english-pod-learner
+npm install
+cp .env.example .env
+```
+
+Create the Supabase tables and storage bucket with
+[docs/supabase-schema.sql](docs/supabase-schema.sql), then fill in `.env`.
+
+Run the desktop app:
+
+```bash
+npm run electron:dev
+```
 
 ## Setup
 
@@ -114,11 +136,13 @@ Cloudflare Pages settings:
 ```text
 Build command: npm run build:web
 Build output directory: dist-web
+Root directory: /
 ```
 
 Required Pages environment variables:
 
 ```env
+NODE_VERSION=22.12.0
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
 VITE_REMOTE_ACCESS_PASSWORD=
@@ -126,12 +150,21 @@ VITE_REMOTE_ACCESS_PASSWORD=
 
 For details, see [docs/cloudflare-pages.md](docs/cloudflare-pages.md).
 
+Do not add long-lived AI provider keys to public Cloudflare Pages `VITE_*`
+variables. They are embedded in the browser bundle. For public deployments, use
+a backend proxy/Edge Function or have trusted users enter their own key in
+Settings.
+
 ## Cloudflare Tunnel Remote Access
 
 Cloudflare Tunnel is optional and only needed when you want to expose the app
 running on your local machine. Configure your own Cloudflare Tunnel
 credentials, then copy and edit `cloudflared-config.yml` into your Cloudflare
 config location.
+
+Set `PODFLUENT_TUNNEL_NAME` to use a tunnel name other than `podfluent`. If you
+expose the local WhisperX API through a tunnel, add its frontend origin to
+`PODFLUENT_CORS_ORIGINS`.
 
 The tunnel/web route requires:
 
@@ -165,3 +198,12 @@ docs/
 - Supabase anon keys are public by design, but your Row Level Security policies still matter.
 - The sample Supabase policies are permissive for personal use. Review them before sharing access.
 - Remote access should be treated as private-by-default.
+- See [SECURITY.md](SECURITY.md) before exposing this app beyond personal use.
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).

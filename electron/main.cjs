@@ -334,11 +334,12 @@ function toggleCloudflared(enable) {
             return;
         }
 
-        sendLogToRenderer('[Cloudflared] Starting tunnel "podfluent"...');
+        const tunnelName = process.env.PODFLUENT_TUNNEL_NAME || process.env.CLOUDFLARED_TUNNEL_NAME || 'podfluent';
+        sendLogToRenderer(`[Cloudflared] Starting tunnel "${tunnelName}"...`);
 
         // Assumes cloudflared is in system PATH
         try {
-            cloudflaredProcess = cp.spawn('cloudflared', ['tunnel', 'run', 'podfluent'], {
+            cloudflaredProcess = cp.spawn('cloudflared', ['tunnel', 'run', tunnelName], {
                 shell: true, // Needed for PATH resolution on Windows usually
                 stdio: ['ignore', 'pipe', 'pipe']
             });

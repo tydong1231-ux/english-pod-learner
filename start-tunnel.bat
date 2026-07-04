@@ -4,10 +4,13 @@ REM Configure %USERPROFILE%\.cloudflared\config.yml before running this file.
 
 echo Starting PodFluent Cloudflare Tunnel...
 echo.
-echo Frontend: https://podcast.botly.cn
-echo Backend API: https://api.botly.cn
+echo Set PODFLUENT_TUNNEL_NAME to override the default tunnel name.
 echo.
 echo Press Ctrl+C to stop the tunnel.
 echo.
 
-cloudflared tunnel run podfluent
+if "%PODFLUENT_TUNNEL_NAME%"=="" (
+  cloudflared tunnel run podfluent
+) else (
+  cloudflared tunnel run "%PODFLUENT_TUNNEL_NAME%"
+)

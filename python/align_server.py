@@ -69,13 +69,17 @@ print("[PyTorch] Patched torch.load to force weights_only=False")
 
 # App Config
 app = Flask(__name__)
-# CORS: Allow local and remote access
-CORS(app, origins=[
+DEFAULT_CORS_ORIGINS = [
     "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://podcast.botly.cn",
-    "https://api.botly.cn"
-])
+    "http://127.0.0.1:5173"
+]
+EXTRA_CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("PODFLUENT_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
+# CORS: local by default; add tunnel domains with PODFLUENT_CORS_ORIGINS.
+CORS(app, origins=DEFAULT_CORS_ORIGINS + EXTRA_CORS_ORIGINS)
 
 # Configuration
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

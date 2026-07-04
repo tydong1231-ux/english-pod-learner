@@ -12,8 +12,7 @@ REM 1. Key Check
 if "%HF_TOKEN%"=="" (
     echo [WARNING] HF_TOKEN is not set.
     echo Speaker diarization will be DISABLED.
-    echo To enable, edit this file and set HF_TOKEN=your_token
-    echo or run: set HF_TOKEN=your_token before running this script.
+    echo To enable it, set HF_TOKEN in your shell or .env file before running this script.
     echo.
 )
 
