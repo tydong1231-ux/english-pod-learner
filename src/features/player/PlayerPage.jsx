@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X } from 'lucide-react';
 
@@ -12,6 +12,8 @@ import { isRemoteAccess, isWebBuild } from '../../lib/env';
 
 import styles from './PlayerPage.module.css';
 
+const PLAYBACK_CONTEXT_KEY = 'podfluent-playback-context';
+
 export function PlayerPage() {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -21,7 +23,7 @@ export function PlayerPage() {
     const [transcriptRecord, setTranscriptRecord] = useState(null);
     const [loading, setLoading] = useState(isSupabaseConfigured());
 
-    const { audioRef, isPlaying, togglePlay, seek, playFrom, currentTime, duration, checkDuration } = useAudioPlayer();
+    const { audioRef, isPlaying, togglePlay, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
     const { apiKey, vocabProvider, openaiApiKey, openaiBaseUrl, openaiModel } = useStore();
 
     const [audioUrl, setAudioUrl] = useState(null);
@@ -29,6 +31,8 @@ export function PlayerPage() {
     const [audioError, setAudioError] = useState('');
     const [loadingVocab, setLoadingVocab] = useState(false);
     const [vocabCard, setVocabCard] = useState(null);
+    const pendingAutoplayRef = useRef(false);
+    const playbackContextRef = useRef(readPlaybackContext());
 
     const speak = (text) => {
         const u = new SpeechSynthesisUtterance(text);
@@ -39,6 +43,14 @@ export function PlayerPage() {
     // Fetch Podcast & Transcript
     useEffect(() => {
         async function fetchData() {
+            setLoading(isSupabaseConfigured());
+            setPodcast(null);
+            setTranscriptRecord(null);
+            setAudioUrl(null);
+            setAudioStatus('');
+            setAudioError('');
+            reset();
+
             if (!isSupabaseConfigured()) {
                 return;
             }
@@ -74,7 +86,7 @@ export function PlayerPage() {
             }
         }
         fetchData();
-    }, [id]);
+    }, [id, reset]);
 
     useEffect(() => {
         if (!podcast?.audio_url) return undefined;
@@ -144,6 +156,29 @@ export function PlayerPage() {
         }
         return undefined;
     }, [audioUrl, checkDuration]);
+
+    useEffect(() => {
+        if (!audioUrl || !podcast || podcast.id !== id || !pendingAutoplayRef.current) return undefined;
+
+        const timer = setTimeout(() => {
+            pendingAutoplayRef.current = false;
+            playFrom(0);
+        }, 120);
+
+        return () => clearTimeout(timer);
+    }, [audioUrl, id, playFrom, podcast]);
+
+    const handleAudioEnded = () => {
+        const context = playbackContextRef.current;
+        const orderedIds = Array.isArray(context?.orderedIds) ? context.orderedIds : [];
+        const currentIndex = orderedIds.findIndex((podcastId) => String(podcastId) === String(id));
+        const nextId = currentIndex >= 0 ? orderedIds[currentIndex + 1] : null;
+
+        if (!nextId) return;
+
+        pendingAutoplayRef.current = true;
+        navigate('/player/' + nextId, { replace: true });
+    };
 
     const handleSeek = (e) => {
         const time = parseFloat(e.target.value);
@@ -315,9 +350,11 @@ export function PlayerPage() {
                 </div>
 
                 <audio
+                    key={podcast.id}
                     ref={audioRef}
                     src={audioUrl}
                     preload="auto"
+                    onEnded={handleAudioEnded}
                     onLoadedMetadata={checkDuration}
                     onCanPlay={checkDuration}
                     onLoadedData={checkDuration}
@@ -344,4 +381,16 @@ function getPlayableAudioUrl(sourceUrl) {
     }
 
     return sourceUrl;
+}
+
+function readPlaybackContext() {
+    if (typeof localStorage === 'undefined') return null;
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PLAYBACK_CONTEXT_KEY) || 'null');
+        if (!parsed || !Array.isArray(parsed.orderedIds)) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
 }

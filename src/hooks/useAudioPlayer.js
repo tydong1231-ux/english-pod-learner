@@ -134,6 +134,17 @@ export function useAudioPlayer() {
         }
     }, [playAudio]);
 
+    const reset = useCallback(() => {
+        const audio = audioElementRef.current;
+        if (audio) {
+            audio.pause();
+            audio.currentTime = 0;
+        }
+        setIsPlaying(false);
+        setCurrentTime(0);
+        setDuration(0);
+    }, []);
+
     return {
         audioRef,
         isPlaying,
@@ -143,5 +154,6 @@ export function useAudioPlayer() {
         seek,
         playFrom,
         checkDuration,
+        reset,
     };
 }

@@ -30,8 +30,11 @@ import styles from './DashboardPage.module.css';
 const ALL_FOLDERS = 'all';
 const DEFAULT_FOLDER = 'Inbox';
 const CUSTOM_FOLDERS_KEY = 'podfluent-custom-folders';
+const LIBRARY_STATE_KEY = 'podfluent-library-state';
+const PLAYBACK_CONTEXT_KEY = 'podfluent-playback-context';
 const UPLOAD_CONCURRENCY = 3;
 const RESUMABLE_STATUSES = new Set([PodcastStatus.PENDING, PodcastStatus.PROCESSING]);
+const SORT_MODES = new Set(['created_desc', 'title_asc', 'title_desc', 'folder_asc', 'status_asc']);
 
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
@@ -42,14 +45,14 @@ export function DashboardPage() {
     const [folderState, setFolderState] = useState({ status: 'idle', message: '' });
     const [deletingIds, setDeletingIds] = useState(() => new Set());
     const [deleteConfirmId, setDeleteConfirmId] = useState(null);
-    const [selectedFolder, setSelectedFolder] = useState(ALL_FOLDERS);
+    const [selectedFolder, setSelectedFolder] = useState(() => readLibraryState().folder);
     const [importFolder, setImportFolder] = useState(DEFAULT_FOLDER);
     const [customFolders, setCustomFolders] = useState(readCustomFolders);
     const [newFolderName, setNewFolderName] = useState('');
     const [renamingFolder, setRenamingFolder] = useState(false);
     const [renameValue, setRenameValue] = useState('');
-    const [sortMode, setSortMode] = useState('created_desc');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [sortMode, setSortMode] = useState(() => readLibraryState().sortMode);
+    const [searchQuery, setSearchQuery] = useState(() => readLibraryState().searchQuery);
     const { apiKey, geminiModel, transcriptionPrompt, theme, setTheme } = useStore();
     const fileInputRef = useRef(null);
     const processingQueueRef = useRef([]);
@@ -112,10 +115,15 @@ export function DashboardPage() {
     }, [apiKey, geminiModel, transcriptionPrompt]);
 
     useEffect(() => {
+        writeLibraryState({ folder: selectedFolder, sortMode, searchQuery });
+    }, [selectedFolder, sortMode, searchQuery]);
+
+    useEffect(() => {
+        if (loading) return;
         if (selectedFolder !== ALL_FOLDERS && !folders.includes(selectedFolder)) {
             setSelectedFolder(ALL_FOLDERS);
         }
-    }, [folders, selectedFolder]);
+    }, [folders, loading, selectedFolder]);
 
     useEffect(() => {
         if (selectedFolder !== ALL_FOLDERS) {
@@ -332,6 +340,21 @@ export function DashboardPage() {
         }
 
         enqueueProcessing([{ id: podcastId }]);
+    };
+
+    const handleOpenPodcast = (podcastId) => {
+        const orderedIds = displayedPodcasts
+            .filter((podcast) => podcast.status === PodcastStatus.READY)
+            .map((podcast) => podcast.id);
+
+        writePlaybackContext({
+            openedId: podcastId,
+            orderedIds,
+            folder: selectedFolder,
+            sortMode,
+            searchQuery,
+        });
+        navigate('/player/' + podcastId);
     };
 
     const handleCreateFolder = (event) => {
@@ -745,7 +768,7 @@ export function DashboardPage() {
                                 <div
                                     key={podcast.id}
                                     className={styles.card}
-                                    onClick={() => podcast.status === PodcastStatus.READY && navigate(`/player/${podcast.id}`)}
+                                    onClick={() => podcast.status === PodcastStatus.READY && handleOpenPodcast(podcast.id)}
                                 >
                                     <div className={styles.cardIcon}>
                                         {podcast.status === PodcastStatus.PROCESSING ? (
@@ -865,6 +888,39 @@ function readCustomFolders() {
     } catch {
         return [];
     }
+}
+
+function readLibraryState() {
+    const fallback = { folder: ALL_FOLDERS, sortMode: 'created_desc', searchQuery: '' };
+    if (typeof localStorage === 'undefined') return fallback;
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(LIBRARY_STATE_KEY) || '{}');
+        return {
+            folder: typeof parsed.folder === 'string' && parsed.folder ? parsed.folder : fallback.folder,
+            sortMode: SORT_MODES.has(parsed.sortMode) ? parsed.sortMode : fallback.sortMode,
+            searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : fallback.searchQuery,
+        };
+    } catch {
+        return fallback;
+    }
+}
+
+function writeLibraryState(state) {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(LIBRARY_STATE_KEY, JSON.stringify({
+        folder: state.folder || ALL_FOLDERS,
+        sortMode: SORT_MODES.has(state.sortMode) ? state.sortMode : 'created_desc',
+        searchQuery: state.searchQuery || '',
+    }));
+}
+
+function writePlaybackContext(context) {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(PLAYBACK_CONTEXT_KEY, JSON.stringify({
+        ...context,
+        openedAt: Date.now(),
+    }));
 }
 
 function writeCustomFolders(folders) {

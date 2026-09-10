@@ -4,6 +4,8 @@ import styles from './PasswordGate.module.css';
 
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 5 * 60 * 1000;
+const AUTH_STORAGE_KEY = 'podfluent_auth';
+const REMEMBER_AUTH_KEY = 'podfluent_remember_auth';
 
 export function PasswordGate({ children }) {
     const [initialLockout] = useState(readStoredLockout);
@@ -14,6 +16,7 @@ export function PasswordGate({ children }) {
     const [lockedUntil, setLockedUntil] = useState(initialLockout.lockedUntil);
     const [remainingTime, setRemainingTime] = useState(0);
     const [configuredPassword, setConfiguredPassword] = useState(getRemoteAccessPassword);
+    const [rememberDevice, setRememberDevice] = useState(readRememberDevice);
 
     const isConfigured = configuredPassword.trim().length > 0;
 
@@ -57,7 +60,7 @@ export function PasswordGate({ children }) {
 
         if (password === configuredPassword) {
             setIsUnlocked(true);
-            sessionStorage.setItem('podfluent_auth', 'true');
+            persistAuth(rememberDevice);
             setError('');
             setAttempts(0);
             localStorage.removeItem('podfluent_attempts');
@@ -112,12 +115,14 @@ export function PasswordGate({ children }) {
 
                 <form onSubmit={handleSubmit} className={styles.form}>
                     <input
+                        name="password"
                         type="password"
                         value={password}
                         onChange={(event) => setPassword(event.target.value)}
                         placeholder="Access password"
                         className={styles.input}
                         disabled={isLocked}
+                        autoComplete="current-password"
                         autoFocus
                     />
                     <button
@@ -129,6 +134,19 @@ export function PasswordGate({ children }) {
                     </button>
                 </form>
 
+                <label className={styles.rememberChoice}>
+                    <input
+                        type="checkbox"
+                        checked={rememberDevice}
+                        onChange={(event) => {
+                            const nextValue = event.target.checked;
+                            setRememberDevice(nextValue);
+                            localStorage.setItem(REMEMBER_AUTH_KEY, nextValue ? 'true' : 'false');
+                        }}
+                    />
+                    <span>Remember this device</span>
+                </label>
+
                 {error && <p className={styles.error}>{error}</p>}
 
                 <p className={styles.hint}>Authorized users only.</p>
@@ -139,9 +157,33 @@ export function PasswordGate({ children }) {
 
 function readSessionAuth() {
     try {
-        return sessionStorage.getItem('podfluent_auth') === 'true';
+        return localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
+            || sessionStorage.getItem(AUTH_STORAGE_KEY) === 'true';
     } catch {
         return false;
+    }
+}
+
+function readRememberDevice() {
+    try {
+        return localStorage.getItem(REMEMBER_AUTH_KEY) !== 'false';
+    } catch {
+        return true;
+    }
+}
+
+function persistAuth(rememberDevice) {
+    try {
+        if (rememberDevice) {
+            localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+            sessionStorage.removeItem(AUTH_STORAGE_KEY);
+        } else {
+            sessionStorage.setItem(AUTH_STORAGE_KEY, 'true');
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+        }
+        localStorage.setItem(REMEMBER_AUTH_KEY, rememberDevice ? 'true' : 'false');
+    } catch {
+        // Storage can be disabled in privacy mode; the current session still stays unlocked.
     }
 }
 

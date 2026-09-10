@@ -198,8 +198,7 @@
     .main {
         flex: 1;
         min-height: 0;
-        padding: 1rem;
-        padding-bottom: 2rem;
+        padding: 0.75rem 0.7rem 1rem;
         overflow-y: auto;
     }
 
