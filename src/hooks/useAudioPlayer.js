@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 
 export function useAudioPlayer() {
     const audioElementRef = useRef(null);
+    const pendingPlayHandlerRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -37,6 +38,10 @@ export function useAudioPlayer() {
     const audioRef = useCallback((audioElement) => {
         if (audioElementRef.current) {
             const old = audioElementRef.current;
+            if (pendingPlayHandlerRef.current) {
+                old.removeEventListener('canplay', pendingPlayHandlerRef.current);
+                pendingPlayHandlerRef.current = null;
+            }
             old.removeEventListener('timeupdate', handleTimeUpdate);
             old.removeEventListener('durationchange', handleDurationChange);
             old.removeEventListener('loadedmetadata', handleDurationChange);
@@ -86,6 +91,36 @@ export function useAudioPlayer() {
         });
     }, []);
 
+    const playWhenReady = useCallback((audio) => {
+        if (audio.readyState >= 3) {
+            playAudio(audio);
+            return;
+        }
+
+        if (pendingPlayHandlerRef.current) {
+            audio.removeEventListener('canplay', pendingPlayHandlerRef.current);
+        }
+
+        const handleCanPlay = () => {
+            pendingPlayHandlerRef.current = null;
+            playAudio(audio);
+        };
+        pendingPlayHandlerRef.current = handleCanPlay;
+        audio.addEventListener('canplay', handleCanPlay, { once: true });
+    }, [playAudio]);
+
+    const pauseAudio = useCallback(() => {
+        const audio = audioElementRef.current;
+        if (!audio) return;
+
+        if (pendingPlayHandlerRef.current) {
+            audio.removeEventListener('canplay', pendingPlayHandlerRef.current);
+            pendingPlayHandlerRef.current = null;
+        }
+        audio.pause();
+        setIsPlaying(false);
+    }, []);
+
     const togglePlay = useCallback(() => {
         const audio = audioElementRef.current;
         if (!audio) {
@@ -109,15 +144,10 @@ export function useAudioPlayer() {
             setCurrentTime(audio.currentTime);
 
             if (shouldResume) {
-                const resume = () => playAudio(audio);
-                if (audio.readyState >= 3) {
-                    resume();
-                } else {
-                    audio.addEventListener('canplay', resume, { once: true });
-                }
+                playWhenReady(audio);
             }
         }
-    }, [playAudio]);
+    }, [playWhenReady]);
 
     const playFrom = useCallback((time) => {
         const audio = audioElementRef.current;
@@ -126,24 +156,19 @@ export function useAudioPlayer() {
         audio.currentTime = Math.max(0, Math.min(time, audio.duration || Infinity));
         setCurrentTime(audio.currentTime);
 
-        const playWhenReady = () => playAudio(audio);
-        if (audio.readyState >= 3) {
-            playWhenReady();
-        } else {
-            audio.addEventListener('canplay', playWhenReady, { once: true });
-        }
-    }, [playAudio]);
+        playWhenReady(audio);
+    }, [playWhenReady]);
 
     const reset = useCallback(() => {
         const audio = audioElementRef.current;
         if (audio) {
-            audio.pause();
+            pauseAudio();
             audio.currentTime = 0;
         }
         setIsPlaying(false);
         setCurrentTime(0);
         setDuration(0);
-    }, []);
+    }, [pauseAudio]);
 
     return {
         audioRef,
@@ -151,6 +176,7 @@ export function useAudioPlayer() {
         currentTime,
         duration,
         togglePlay,
+        pauseAudio,
         seek,
         playFrom,
         checkDuration,

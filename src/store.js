@@ -25,6 +25,10 @@ export const useStore = create(
             currentTime: 0,
             setCurrentTime: (time) => set({ currentTime: time }),
 
+            sleepTimer: null,
+            setSleepTimer: (timer) => set({ sleepTimer: timer }),
+            clearSleepTimer: () => set({ sleepTimer: null }),
+
             // UI State
             isSidebarOpen: false,
             toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
@@ -72,7 +76,8 @@ export const useStore = create(
                 openaiModel: state.openaiModel,
                 whisperModel: state.whisperModel,
                 remoteAccessEnabled: state.remoteAccessEnabled,
-                theme: state.theme
+                theme: state.theme,
+                sleepTimer: state.sleepTimer,
             }),
             merge: (persistedState, currentState) => {
                 const persisted = persistedState || {};

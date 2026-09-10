@@ -186,6 +186,92 @@
     box-shadow: 0 -18px 48px rgba(23, 32, 51, 0.08);
 }
 
+.controlRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.sleepTimerControl {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.sleepTimerPicker {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: rgba(100, 112, 131, 0.08);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.sleepTimerPicker:hover {
+    color: var(--color-primary);
+    background: var(--bg-surface-solid);
+    box-shadow: var(--shadow-sm);
+}
+
+.sleepTimerActive {
+    color: white;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+}
+
+.sleepTimerActive:hover {
+    color: white;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+}
+
+.sleepTimerPicker select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.sleepTimerStatus {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.sleepTimerCancel {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    color: var(--text-muted);
+    background: transparent;
+}
+
+.sleepTimerCancel:hover {
+    color: var(--color-danger);
+    background: var(--bg-surface-solid);
+}
+
+.controlSpacer {
+    min-width: 0;
+}
+
 .progress {
     display: flex;
     align-items: center;
@@ -310,6 +396,15 @@
         padding: 0.75rem;
     }
 
+    .controlRow {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.5rem;
+    }
+
+    .controlSpacer {
+        display: none;
+    }
+
     .controls {
         gap: 1rem;
     }
@@ -335,6 +430,39 @@
 
     .playerBar {
         min-height: 116px;
+    }
+
+    .controlRow {
+        gap: 0.4rem;
+    }
+
+    .sleepTimerControl {
+        gap: 0.3rem;
+    }
+
+    .sleepTimerPicker {
+        width: 38px;
+        height: 38px;
+    }
+
+    .sleepTimerCancel {
+        width: 32px;
+        height: 32px;
+    }
+
+    .controls {
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+
+    .controls button {
+        width: 38px;
+        height: 38px;
+    }
+
+    .controls .playBtn {
+        width: 46px;
+        height: 46px;
     }
 }
 

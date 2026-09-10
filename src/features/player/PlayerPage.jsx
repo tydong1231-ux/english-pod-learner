@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X, Timer } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { useStore } from '../../store';
@@ -13,6 +13,8 @@ import { isRemoteAccess, isWebBuild } from '../../lib/env';
 import styles from './PlayerPage.module.css';
 
 const PLAYBACK_CONTEXT_KEY = 'podfluent-playback-context';
+const EPISODE_TIMER_OPTIONS = [1, 2, 3, 5];
+const MINUTE_TIMER_OPTIONS = [30, 60, 90, 120];
 
 export function PlayerPage() {
     const { id } = useParams();
@@ -23,14 +25,24 @@ export function PlayerPage() {
     const [transcriptRecord, setTranscriptRecord] = useState(null);
     const [loading, setLoading] = useState(isSupabaseConfigured());
 
-    const { audioRef, isPlaying, togglePlay, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
-    const { apiKey, vocabProvider, openaiApiKey, openaiBaseUrl, openaiModel } = useStore();
+    const { audioRef, isPlaying, togglePlay, pauseAudio, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
+    const {
+        apiKey,
+        vocabProvider,
+        openaiApiKey,
+        openaiBaseUrl,
+        openaiModel,
+        sleepTimer,
+        setSleepTimer,
+        clearSleepTimer,
+    } = useStore();
 
     const [audioUrl, setAudioUrl] = useState(null);
     const [audioStatus, setAudioStatus] = useState('');
     const [audioError, setAudioError] = useState('');
     const [loadingVocab, setLoadingVocab] = useState(false);
     const [vocabCard, setVocabCard] = useState(null);
+    const [timerNow, setTimerNow] = useState(Date.now);
     const pendingAutoplayRef = useRef(false);
     const playbackContextRef = useRef(readPlaybackContext());
 
@@ -161,6 +173,7 @@ export function PlayerPage() {
         if (!audioUrl || !podcast || podcast.id !== id || !pendingAutoplayRef.current) return undefined;
 
         const timer = setTimeout(() => {
+            if (!pendingAutoplayRef.current) return;
             pendingAutoplayRef.current = false;
             playFrom(0);
         }, 120);
@@ -168,7 +181,51 @@ export function PlayerPage() {
         return () => clearTimeout(timer);
     }, [audioUrl, id, playFrom, podcast]);
 
+    useEffect(() => {
+        if (sleepTimer?.type !== 'time') return undefined;
+
+        const deadline = Number(sleepTimer.deadline);
+        const expireTimer = () => {
+            pendingAutoplayRef.current = false;
+            pauseAudio();
+            clearSleepTimer();
+        };
+
+        const remaining = deadline - Date.now();
+        if (!Number.isFinite(deadline) || remaining <= 0) {
+            const expiredTimer = setTimeout(expireTimer, 0);
+            return () => clearTimeout(expiredTimer);
+        }
+
+        const ticker = setInterval(() => {
+            setTimerNow(Date.now());
+        }, 1000);
+        const expirationTimer = setTimeout(expireTimer, remaining);
+
+        return () => {
+            clearInterval(ticker);
+            clearTimeout(expirationTimer);
+        };
+    }, [clearSleepTimer, pauseAudio, sleepTimer]);
+
     const handleAudioEnded = () => {
+        if (sleepTimer?.type === 'episodes') {
+            const remainingEpisodes = Number(sleepTimer.remainingEpisodes) || 1;
+            if (remainingEpisodes <= 1) {
+                clearSleepTimer();
+                return;
+            }
+
+            setSleepTimer({
+                ...sleepTimer,
+                remainingEpisodes: remainingEpisodes - 1,
+            });
+        } else if (sleepTimer?.type === 'time' && Number(sleepTimer.deadline) <= Date.now()) {
+            pendingAutoplayRef.current = false;
+            clearSleepTimer();
+            return;
+        }
+
         const context = playbackContextRef.current;
         const orderedIds = Array.isArray(context?.orderedIds) ? context.orderedIds : [];
         const currentIndex = orderedIds.findIndex((podcastId) => String(podcastId) === String(id));
@@ -179,6 +236,35 @@ export function PlayerPage() {
         pendingAutoplayRef.current = true;
         navigate('/player/' + nextId, { replace: true });
     };
+
+    const handleSleepTimerChange = (event) => {
+        const [type, rawAmount] = event.target.value.split(':');
+        const amount = Number.parseInt(rawAmount, 10);
+        if (!Number.isFinite(amount) || amount <= 0) return;
+
+        setTimerNow(Date.now());
+        if (type === 'episodes') {
+            setSleepTimer({
+                type: 'episodes',
+                remainingEpisodes: amount,
+                startedAt: Date.now(),
+            });
+        } else if (type === 'minutes') {
+            setSleepTimer({
+                type: 'time',
+                deadline: Date.now() + amount * 60 * 1000,
+                minutes: amount,
+                startedAt: Date.now(),
+            });
+        }
+    };
+
+    const handleCancelSleepTimer = () => {
+        clearSleepTimer();
+        setTimerNow(Date.now());
+    };
+
+    const sleepTimerLabel = formatSleepTimerLabel(sleepTimer, timerNow);
 
     const handleSeek = (e) => {
         const time = parseFloat(e.target.value);
@@ -328,12 +414,63 @@ export function PlayerPage() {
             </div>
 
             <div className={styles.playerBar}>
-                <div className={styles.controls}>
-                    <button onClick={() => seek(currentTime - 5)}><SkipBack size={20} /></button>
-                    <button onClick={togglePlay} className={styles.playBtn}>
-                        {isPlaying ? <Pause fill="white" /> : <Play fill="white" className={styles.playIconOffset} />}
-                    </button>
-                    <button onClick={() => seek(currentTime + 5)}><SkipForward size={20} /></button>
+                <div className={styles.controlRow}>
+                    <div className={styles.sleepTimerControl}>
+                        <label
+                            className={[styles.sleepTimerPicker, sleepTimer ? styles.sleepTimerActive : ''].filter(Boolean).join(' ')}
+                            title="Set sleep timer"
+                        >
+                            <Timer size={19} />
+                            <select
+                                value=""
+                                onChange={handleSleepTimerChange}
+                                aria-label="Set sleep timer"
+                            >
+                                <option value="" disabled>Sleep timer</option>
+                                <optgroup label="Episodes">
+                                    {EPISODE_TIMER_OPTIONS.map((count) => (
+                                        <option key={'episodes-' + count} value={'episodes:' + count}>
+                                            {count} {count === 1 ? 'episode' : 'episodes'}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                                <optgroup label="Minutes">
+                                    {MINUTE_TIMER_OPTIONS.map((minutes) => (
+                                        <option key={'minutes-' + minutes} value={'minutes:' + minutes}>
+                                            {minutes} minutes
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            </select>
+                        </label>
+
+                        {sleepTimer && (
+                            <>
+                                <span className={styles.sleepTimerStatus} aria-live="polite">
+                                    {sleepTimerLabel}
+                                </span>
+                                <button
+                                    type="button"
+                                    className={styles.sleepTimerCancel}
+                                    onClick={handleCancelSleepTimer}
+                                    aria-label="Cancel sleep timer"
+                                    title="Cancel sleep timer"
+                                >
+                                    <X size={16} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+
+                    <div className={styles.controls}>
+                        <button onClick={() => seek(currentTime - 5)} aria-label="Back 5 seconds"><SkipBack size={20} /></button>
+                        <button onClick={togglePlay} className={styles.playBtn} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                            {isPlaying ? <Pause fill="white" /> : <Play fill="white" className={styles.playIconOffset} />}
+                        </button>
+                        <button onClick={() => seek(currentTime + 5)} aria-label="Forward 5 seconds"><SkipForward size={20} /></button>
+                    </div>
+
+                    <div className={styles.controlSpacer} />
                 </div>
 
                 <div className={styles.progress}>
@@ -373,6 +510,27 @@ function formatTime(s) {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function formatSleepTimerLabel(timer, now) {
+    if (timer?.type === 'episodes') {
+        const count = Math.max(1, Number(timer.remainingEpisodes) || 1);
+        return count + (count === 1 ? ' ep' : ' eps');
+    }
+
+    if (timer?.type === 'time') {
+        const seconds = Math.max(0, Math.ceil((Number(timer.deadline) - now) / 1000));
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = seconds % 60;
+
+        if (hours > 0) {
+            return hours + ':' + minutes.toString().padStart(2, '0') + ':' + remainingSeconds.toString().padStart(2, '0');
+        }
+        return minutes + ':' + remainingSeconds.toString().padStart(2, '0');
+    }
+
+    return '';
 }
 
 function getPlayableAudioUrl(sourceUrl) {
