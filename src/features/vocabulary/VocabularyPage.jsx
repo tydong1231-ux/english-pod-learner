@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Volume2, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { VocabService } from '../../services/vocab';
+import { VocabularyDefinition } from '../../components/VocabularyDefinition';
 import styles from './VocabularyPage.module.css';
 
 export function VocabularyPage() {
@@ -125,7 +126,7 @@ export function VocabularyPage() {
                             </div>
                         </div>
 
-                        <div className={styles.definition}>{item.meaning}</div>
+                        <VocabularyDefinition className={styles.definition} text={item.meaning} />
 
                         {expandedId === item.id && (
                             <div className={styles.details}>

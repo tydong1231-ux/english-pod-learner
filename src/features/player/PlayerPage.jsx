@@ -5,6 +5,7 @@ import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X, Time
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
+import { VocabularyDefinition } from '../../components/VocabularyDefinition';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
 import { cacheAudioForPodcast, checkAudioCache } from '../../lib/audioCache';
@@ -389,7 +390,7 @@ export function PlayerPage() {
                                     <Volume2 className={styles.speaker} onClick={() => speak(vocabCard.word)} size={20} />
                                 </div>
                                 <div className={styles.phonetic}>/{vocabCard.ipa}/</div>
-                                <div className={styles.definition}>{vocabCard.definition}</div>
+                                    <VocabularyDefinition className={styles.definition} text={vocabCard.definition || vocabCard.meaning} />
                                 <div className={styles.translation}>{vocabCard.translation}</div>
 
                                 <div className={styles.examples}>
