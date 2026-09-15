@@ -360,7 +360,12 @@ export class GeminiService {
     const prompt = `Create a vocabulary card for the word "${word}" in the context of this sentence: "${contextSentence}".
 
 Return ONLY valid JSON (no markdown, no explanation):
-{"word": "${word}", "definition": "concise English definition", "ipa": "phonetic transcription", "examples": ["sentence 1", "sentence 2"], "translation": "Chinese translation"}`;
+{"word": "${word}", "definition": "concise English definition, followed by the optional root section below", "ipa": "phonetic transcription", "examples": ["sentence 1", "sentence 2"], "translation": "Chinese translation"}
+
+In definition, give the concise English meaning in context first. Only if the word has reliable, useful etymological roots, append: 【词根拆解】 ① root (brief Chinese meaning): relatedWord (short English meaning); relatedWord (short English meaning). Use ② for a second root.
+Include at most 2 roots actually present in the word; if there are more, omit the most common roots first. Do not invent splits, mistake similar spelling for shared origin, or treat ordinary inflectional endings as roots. If no reliable roots exist, omit the entire section without comment.
+For each root, give exactly 2 distinct words sharing that root and meaning, excluding the target word and its inflected forms. Prefer useful intermediate-to-advanced everyday words, neither elementary nor obscure; each parenthetical English meaning must be 2–5 words. Omit a root if two reliable examples cannot be supplied.
+Keep the root section inside definition as compact plain text, with the heading and numbered separators visible even without line breaks. Keep the other fields unchanged; examples must remain two sentences using the target word.`;
 
     try {
       console.log('[Gemini] Generating vocab card for:', word);
