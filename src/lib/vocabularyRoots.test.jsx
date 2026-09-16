@@ -23,6 +23,7 @@ describe('vocabulary root contract and display', () => {
         const stored = JSON.parse(JSON.stringify({ meaning }));
         const html = render(stored.meaning);
         expect(html).toContain('aria-label="词根拆解"');
+        expect(html).not.toContain('<h4');
         expect(html).toContain('spect (看)');
         expect(html).toContain('prospect (a future possibility)');
         expect(html).toContain('retrospect (looking back on events)');

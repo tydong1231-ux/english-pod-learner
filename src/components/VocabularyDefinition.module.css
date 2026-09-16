@@ -8,12 +8,6 @@
     overflow-wrap: anywhere;
 }
 
-.heading {
-    margin: 0 0 0.7rem;
-    font-size: 0.875rem;
-    color: var(--color-primary);
-}
-
 .root + .root {
     border-top: 1px solid var(--border-subtle);
     margin-top: 0.75rem;

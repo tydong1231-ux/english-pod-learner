@@ -14,7 +14,6 @@ export function VocabularyDefinition({ text = '', className }) {
             <div className={className}>{definition}</div>
             {roots.length > 0 && (
                 <section className={styles.roots} aria-label="词根拆解">
-                    <h4 className={styles.heading}>词根拆解</h4>
                     {roots.map((root, index) => {
                         const separator = root.search(/[:：]/u);
                         const title = separator < 0 ? root : root.slice(0, separator);
