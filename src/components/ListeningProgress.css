@@ -1,0 +1,10 @@
+.listening-progress { display: inline-flex; align-items: center; gap: .3rem; min-width: 0; flex: 0 0 auto; vertical-align: middle; color: var(--text-muted); }
+.listening-progress progress { appearance: none; border: 0; border-radius: 3px; overflow: hidden; height: 3px; width: 36px; flex: 0 0 36px; background: var(--border-subtle); }
+.listening-progress progress::-webkit-progress-bar { background: var(--border-subtle); border-radius: 3px; }
+.listening-progress progress::-webkit-progress-value { background: var(--color-primary); border-radius: 3px; }
+.listening-progress progress::-moz-progress-bar { background: var(--color-primary); border-radius: 3px; }
+.listening-progress[data-state="completed"] { color: var(--color-success); }
+.listening-progress[data-state="completed"] progress::-webkit-progress-value { background: var(--color-success); }
+.listening-progress[data-state="completed"] progress::-moz-progress-bar { background: var(--color-success); }
+.listening-progress > span { flex: 0 0 auto; font-size: .68rem; line-height: 1.2; white-space: nowrap; }
+[data-next-unplayed="true"] { box-shadow: inset 2px 0 var(--color-primary) !important; }

@@ -25,3 +25,20 @@ jobs:
 
       - name: Check
         run: npm run check
+
+      - name: Install browser for regression tests
+        run: npx playwright install --with-deps chromium
+
+      - name: Mobile playback, progress and vocabulary regression tests
+        run: |
+          npm run preview -- --config vite.web.config.js --host 127.0.0.1 --port 4173 --strictPort &
+          npx wait-on http://127.0.0.1:4173
+          npm run test:browser
+
+      - name: Keep browser test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-screenshots
+          path: artifacts/
+          if-no-files-found: ignore

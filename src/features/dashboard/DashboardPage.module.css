@@ -782,3 +782,38 @@
 .mobileFolderControls {
     display: none;
 }
+
+.downloadedIcon { display: inline-flex; color: var(--color-success); align-items: center; justify-content: center; }
+.card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.searchBox:focus-within { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+
+@media (max-width: 760px) {
+    .libraryPage:global(.container) { padding: 0 0 .5rem; }
+    .header { margin-bottom: .4rem; min-height: 44px; }
+    .header h1 { font-size: 1.4rem; }
+    .subtitle { display: none; }
+    .themeToggleBtn { width: 44px; height: 44px; background: transparent; border: 0; }
+    .libraryShell { gap: .45rem; }
+    .folderTabs { box-shadow: none; border: 0; background: transparent; padding: 0; gap: .25rem; }
+    .tabItem { min-height: 44px; padding: .4rem .7rem; font-size: .85rem; }
+    .newFolderForm { display: none; }
+    .folderToolbar { display: block; padding: 0; margin-bottom: .5rem; border: 0; background: transparent; box-shadow: none; }
+    .currentFolder { display: none; }
+    .toolbarControls { display: flex; flex-wrap: nowrap; gap: .5rem; }
+    .searchBox { display: flex; flex: 1; min-width: 0; min-height: 44px; width: auto; }
+    .searchBox input { width: 100%; min-width: 0; font-size: 16px; }
+    .compactField { display: flex; width: auto; flex: 0 0 auto; }
+    .compactField > span { font-size: .75rem; }
+    .compactField select { width: 100px; min-width: 0; min-height: 44px; font-size: 16px; padding: 0 .25rem; }
+    .grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .card { grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: .65rem; min-height: 72px; padding: .65rem .2rem; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; box-shadow: none; background: transparent; }
+    .card:hover { transform: none; box-shadow: none; background: var(--bg-surface-hover); }
+    .cardIcon { width: 32px; height: 32px; background: transparent; }
+    .cardIcon svg { width: 20px; height: 20px; }
+    .cardTitle { font-size: .94rem; line-height: 1.35; margin-bottom: .2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+    .cardMeta { font-size: .73rem; gap: .45rem; }
+    .statusBadge[data-status="READY"] { display: none; }
+    .cardActions { grid-column: auto; flex-direction: row; gap: .25rem; }
+    .moveFieldWrapper { display: none; }
+    .downloadedIcon { width: 28px; height: 32px; }
+}

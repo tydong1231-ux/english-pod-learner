@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { BookOpen, Library, Settings, Tv } from 'lucide-react';
+import { BookOpen, Library, Settings, Tv, HardDrive } from 'lucide-react';
+import { canUseLocalFeatures } from '../lib/env';
 import { useStore } from '../store';
 import { isLocalEngineDisabled, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
 import styles from './Layout.module.css';
@@ -10,7 +11,7 @@ export function Layout() {
     const [localEngineDisabled, setLocalEngineDisabled] = React.useState(isLocalEngineDisabled);
     const location = useLocation();
     
-    const isPlayerPage = location.pathname.startsWith('/player');
+    const isPlayerPage = location.pathname.startsWith('/player') || location.pathname.startsWith('/offline/player');
 
     React.useEffect(() => {
         const handleConfigChange = () => {
@@ -21,12 +22,12 @@ export function Layout() {
         return () => window.removeEventListener(RUNTIME_CONFIG_CHANGED, handleConfigChange);
     }, []);
 
-    const needsGeminiKey = localEngineDisabled && !apiKey;
+    const needsGeminiKey = canUseLocalFeatures && localEngineDisabled && !apiKey;
 
     return (
         <div className={styles.appShell}>
             {/* Draggable Area */}
-            <div className={styles.dragRegion} />
+            {canUseLocalFeatures && <div className={styles.dragRegion} />}
 
             <aside className={`${styles.sidebar} ${isPlayerPage ? styles.sidebarHiddenOnMobile : ''}`}>
                 <div className={styles.logo}>
@@ -49,6 +50,11 @@ export function Layout() {
                     >
                         <BookOpen size={20} />
                         <span>Vocabulary</span>
+                    </NavLink>
+
+                    <NavLink to="/offline" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+                        <HardDrive size={20} />
+                        <span>Offline</span>
                     </NavLink>
 
                     <div className={styles.spacer} />

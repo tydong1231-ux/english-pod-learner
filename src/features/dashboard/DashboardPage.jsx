@@ -16,6 +16,7 @@ import {
     Sun,
     Trash2,
     Upload,
+    CircleCheck,
     X,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -25,6 +26,10 @@ import { isLocalEngineDisabled } from '../../lib/runtimeConfig';
 import { normalizeFolder, PodcastService, PodcastStatus } from '../../services/podcast';
 import { useStore } from '../../store';
 import { LogViewer } from '../../components/LogViewer';
+import { useDownloadedEpisodes } from '../../hooks/useDownloadedEpisodes';
+import { useListeningProgress } from '../../hooks/useListeningProgress';
+import { useUnplayedLocation } from '../../hooks/useUnplayedLocation';
+import { ListeningProgress } from '../../components/ListeningProgress';
 import styles from './DashboardPage.module.css';
 
 const ALL_FOLDERS = 'all';
@@ -38,6 +43,8 @@ const SORT_MODES = new Set(['created_desc', 'title_asc', 'title_desc', 'folder_a
 
 export function DashboardPage() {
     const [podcasts, setPodcasts] = useState([]);
+    const downloadedIds = useDownloadedEpisodes();
+    const { progressFor, ready: progressReady } = useListeningProgress();
     const [loading, setLoading] = useState(isSupabaseConfigured());
     const [connectionError, setConnectionError] = useState(null);
     const [uploadState, setUploadState] = useState({ status: 'idle', message: '' });
@@ -103,6 +110,7 @@ export function DashboardPage() {
         return filtered;
     }, [podcasts, searchQuery, selectedFolder, sortMode]);
 
+    const listRef = useUnplayedLocation(displayedPodcasts.filter(episode => episode.status === PodcastStatus.READY), progressFor, !loading && progressReady);
     const selectedFolderCount = selectedFolder === ALL_FOLDERS
         ? podcasts.length
         : folderCounts.get(selectedFolder) || 0;
@@ -535,7 +543,7 @@ export function DashboardPage() {
     }
 
     return (
-        <div className="container">
+        <div className={`container ${styles.libraryPage}`}>
             <header className={styles.header}>
                 <div>
                     <h1>Library</h1>
@@ -697,6 +705,7 @@ export function DashboardPage() {
                                 <Search size={16} />
                                 <input
                                     value={searchQuery}
+                                    aria-label="Search library"
                                     onChange={(event) => setSearchQuery(event.target.value)}
                                     placeholder="Search"
                                 />
@@ -720,6 +729,7 @@ export function DashboardPage() {
                                 <span>Sort</span>
                                 <select
                                     value={sortMode}
+                                    aria-label="Sort library"
                                     onChange={(event) => setSortMode(event.target.value)}
                                 >
                                     <option value="created_desc">Newest</option>
@@ -763,11 +773,15 @@ export function DashboardPage() {
                             </p>
                         </div>
                     ) : (
-                        <div className={styles.grid}>
+                        <div className={styles.grid} ref={listRef}>
                             {displayedPodcasts.map(podcast => (
                                 <div
                                     key={podcast.id}
                                     className={styles.card}
+                                    data-testid="library-episode"
+                                    data-episode-id={podcast.id}
+                                    tabIndex={podcast.status === PodcastStatus.READY ? 0 : undefined}
+                                    onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ') && podcast.status === PodcastStatus.READY) { event.preventDefault(); handleOpenPodcast(podcast.id); } }}
                                     onClick={() => podcast.status === PodcastStatus.READY && handleOpenPodcast(podcast.id)}
                                 >
                                     <div className={styles.cardIcon}>
@@ -787,6 +801,7 @@ export function DashboardPage() {
                                             <span className={styles.statusBadge} data-status={podcast.status}>
                                                 {podcast.status}
                                             </span>
+                                            {podcast.status === PodcastStatus.READY && <ListeningProgress record={progressFor(podcast)} duration={podcast.duration} title={podcast.title} />}
                                         </div>
                                         {podcast.status === PodcastStatus.PROCESSING && podcast.progress && (
                                             <p className={styles.progressText}>{podcast.progress}</p>
@@ -797,6 +812,7 @@ export function DashboardPage() {
                                     </div>
 
                                     <div className={styles.cardActions}>
+                                        {downloadedIds.has(String(podcast.id)) && <span className={styles.downloadedIcon} role="img" aria-label="Downloaded to this device" title="Downloaded to this device"><CircleCheck size={18} /></span>}
                                         <div className={styles.moveFieldWrapper} title="Change folder" onClick={(event) => event.stopPropagation()}>
                                             <Folder size={16} />
                                             <select

@@ -1,4 +1,5 @@
 import { isElectronRenderer } from './env';
+import { vocabularyPrompt } from './vocabularyRoots';
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -21,17 +22,7 @@ export class OpenAIVocabService {
                 },
                 {
                     role: 'user',
-                    content: `Create a vocabulary card for "${word}" in this sentence: "${contextSentence}".
-
-Return this exact JSON shape:
-{
-  "word": "string",
-  "ipa": "string",
-  "definition": "brief English definition",
-  "translation": "Chinese translation",
-  "examples": ["short example 1", "short example 2"],
-  "originalSentence": "the input sentence"
-}`,
+                    content: vocabularyPrompt(word, contextSentence),
                 },
             ],
         });

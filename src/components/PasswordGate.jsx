@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { getRemoteAccessPassword, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
 import styles from './PasswordGate.module.css';
 
@@ -102,6 +103,7 @@ export function PasswordGate({ children }) {
                     <p className={styles.hint}>
                         Set VITE_REMOTE_ACCESS_PASSWORD in your environment before publishing the web build.
                     </p>
+                    <Link to="/offline">Open local offline courses</Link>
                 </div>
             </div>
         );
@@ -150,6 +152,7 @@ export function PasswordGate({ children }) {
                 {error && <p className={styles.error}>{error}</p>}
 
                 <p className={styles.hint}>Authorized users only.</p>
+                <Link to="/offline">Open local offline courses</Link>
             </div>
         </div>
     );

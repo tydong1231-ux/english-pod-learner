@@ -2,6 +2,7 @@
 import { supabase } from '../lib/supabase';
 import { GeminiService } from '../lib/gemini';
 import { OpenAIVocabService } from '../lib/openaiVocab';
+import { vocabularyMeaning } from '../lib/vocabularyRoots';
 
 export class VocabService {
     static async createVocabCard(word, contextSentence, sourcePodcastId, apiKey, options = {}) {
@@ -46,10 +47,11 @@ export class VocabService {
             throw new Error(`Vocabulary API failed: ${err.message}`);
         }
 
-        // Prepare insert data
+        // Use the same representation immediately and after a database reload.
+        const meaning = vocabularyMeaning({ ...cardData, word: cleanWord });
         const baseInsertData = {
             word: cleanWord,
-            meaning: cardData.definition || cardData.meaning || 'No definition available',
+            meaning,
             context_sentence: contextSentence,
             source_podcast_id: sourcePodcastId,
         };
@@ -89,7 +91,7 @@ export class VocabService {
         console.log('[VocabService] Inserted successfully:', newCard);
 
         // Return combined data for UI display
-        return { ...newCard, ...cardData };
+        return { ...newCard, ...cardData, meaning, definition: meaning };
     }
 
     static async deleteVocab(id) {

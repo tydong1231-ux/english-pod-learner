@@ -2,7 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 
 export function useAudioPlayer() {
     const audioElementRef = useRef(null);
-    const pendingPlayHandlerRef = useRef(null);
+    const playRequestRef = useRef(0);
+    const [playbackError, setPlaybackError] = useState('');
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -38,10 +39,8 @@ export function useAudioPlayer() {
     const audioRef = useCallback((audioElement) => {
         if (audioElementRef.current) {
             const old = audioElementRef.current;
-            if (pendingPlayHandlerRef.current) {
-                old.removeEventListener('canplay', pendingPlayHandlerRef.current);
-                pendingPlayHandlerRef.current = null;
-            }
+            playRequestRef.current++;
+            old.pause();
             old.removeEventListener('timeupdate', handleTimeUpdate);
             old.removeEventListener('durationchange', handleDurationChange);
             old.removeEventListener('loadedmetadata', handleDurationChange);
@@ -84,39 +83,32 @@ export function useAudioPlayer() {
         }
     }, []);
 
-    const playAudio = useCallback((audio) => {
-        return audio.play().catch(err => {
-            console.error('Play failed:', err);
+    const playAudio = useCallback(async (audio) => {
+        const request = ++playRequestRef.current;
+        setPlaybackError('');
+        try {
+            // play() waits for media readiness itself. Calling it now also preserves
+            // user activation when playback was requested by a tap.
+            await audio.play();
+        } catch (error) {
+            if (request !== playRequestRef.current || error.name === 'AbortError') return;
             setIsPlaying(false);
-        });
+            setPlaybackError(error.name === 'NotAllowedError'
+                ? 'Your browser paused automatic playback. Tap Play to continue.'
+                : 'Playback could not start. Tap Play to retry.');
+        }
     }, []);
 
-    const playWhenReady = useCallback((audio) => {
-        if (audio.readyState >= 3) {
-            playAudio(audio);
-            return;
-        }
-
-        if (pendingPlayHandlerRef.current) {
-            audio.removeEventListener('canplay', pendingPlayHandlerRef.current);
-        }
-
-        const handleCanPlay = () => {
-            pendingPlayHandlerRef.current = null;
-            playAudio(audio);
-        };
-        pendingPlayHandlerRef.current = handleCanPlay;
-        audio.addEventListener('canplay', handleCanPlay, { once: true });
+    const play = useCallback(() => {
+        const audio = audioElementRef.current;
+        if (audio) return playAudio(audio);
     }, [playAudio]);
 
     const pauseAudio = useCallback(() => {
         const audio = audioElementRef.current;
         if (!audio) return;
 
-        if (pendingPlayHandlerRef.current) {
-            audio.removeEventListener('canplay', pendingPlayHandlerRef.current);
-            pendingPlayHandlerRef.current = null;
-        }
+        playRequestRef.current++;
         audio.pause();
         setIsPlaying(false);
     }, []);
@@ -132,9 +124,9 @@ export function useAudioPlayer() {
             console.log('[Audio] Attempting to play...');
             playAudio(audio);
         } else {
-            audio.pause();
+            pauseAudio();
         }
-    }, [playAudio]);
+    }, [playAudio, pauseAudio]);
 
     const seek = useCallback((time) => {
         const audio = audioElementRef.current;
@@ -144,10 +136,10 @@ export function useAudioPlayer() {
             setCurrentTime(audio.currentTime);
 
             if (shouldResume) {
-                playWhenReady(audio);
+                playAudio(audio);
             }
         }
-    }, [playWhenReady]);
+    }, [playAudio]);
 
     const playFrom = useCallback((time) => {
         const audio = audioElementRef.current;
@@ -156,8 +148,8 @@ export function useAudioPlayer() {
         audio.currentTime = Math.max(0, Math.min(time, audio.duration || Infinity));
         setCurrentTime(audio.currentTime);
 
-        playWhenReady(audio);
-    }, [playWhenReady]);
+        playAudio(audio);
+    }, [playAudio]);
 
     const reset = useCallback(() => {
         const audio = audioElementRef.current;
@@ -168,10 +160,13 @@ export function useAudioPlayer() {
         setIsPlaying(false);
         setCurrentTime(0);
         setDuration(0);
+        setPlaybackError('');
     }, [pauseAudio]);
 
     return {
         audioRef,
+        play,
+        playbackError,
         isPlaying,
         currentTime,
         duration,

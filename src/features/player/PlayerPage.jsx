@@ -1,14 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X, Timer } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
+import { VocabularyDefinition } from '../../components/VocabularyDefinition';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
 import { cacheAudioForPodcast, checkAudioCache } from '../../lib/audioCache';
 import { isRemoteAccess, isWebBuild } from '../../lib/env';
+import { currentSource, episodeKey, getOfflineEpisode, getOfflineEpisodeSummary, hasOfflineContent, saveOfflineProgress } from '../../lib/offlineLibrary';
+import { getListeningSnapshot, listeningKey, listeningState, saveListeningProgress } from '../../lib/listeningProgress';
+import { offlineAudioUrl } from '../../lib/appShell';
 
 import styles from './PlayerPage.module.css';
 
@@ -17,15 +21,16 @@ const EPISODE_TIMER_OPTIONS = [1, 2, 3, 5];
 const MINUTE_TIMER_OPTIONS = [30, 60, 90, 120];
 
 export function PlayerPage() {
-    const { id } = useParams();
+    const { id, offlineKey } = useParams();
     const navigate = useNavigate();
 
     // State for data
     const [podcast, setPodcast] = useState(null);
     const [transcriptRecord, setTranscriptRecord] = useState(null);
     const [loading, setLoading] = useState(isSupabaseConfigured());
+    const [loadedEpisodeKey, setLoadedEpisodeKey] = useState(null);
 
-    const { audioRef, isPlaying, togglePlay, pauseAudio, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
+    const { audioRef, isPlaying, play, playbackError, togglePlay, pauseAudio, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
     const {
         apiKey,
         vocabProvider,
@@ -43,8 +48,30 @@ export function PlayerPage() {
     const [loadingVocab, setLoadingVocab] = useState(false);
     const [vocabCard, setVocabCard] = useState(null);
     const [timerNow, setTimerNow] = useState(Date.now);
-    const pendingAutoplayRef = useRef(false);
+    const pendingAutoplayRef = useRef(null);
     const playbackContextRef = useRef(readPlaybackContext());
+    const resumePositionRef = useRef(null);
+    const lastProgressSaveRef = useRef(0);
+    const offlineRecordRef = useRef(null);
+    const progressTargetRef = useRef(null);
+    const flushProgress = useCallback(() => {
+        const target = progressTargetRef.current;
+        if (!target) return;
+        try { saveListeningProgress(target); }
+        catch { setAudioError('Could not save listening progress. Check available website storage.'); }
+        if (target.key) saveOfflineProgress(target.key, target.position).catch(() => {});
+    }, []);
+
+    useEffect(() => {
+        const handleVisibility = () => { if (document.visibilityState === 'hidden') flushProgress(); };
+        window.addEventListener('pagehide', flushProgress);
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+            flushProgress();
+            window.removeEventListener('pagehide', flushProgress);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }, [flushProgress]);
 
     const speak = (text) => {
         const u = new SpeechSynthesisUtterance(text);
@@ -54,16 +81,44 @@ export function PlayerPage() {
 
     // Fetch Podcast & Transcript
     useEffect(() => {
+        let cancelled = false;
         async function fetchData() {
-            setLoading(isSupabaseConfigured());
+            flushProgress();
+            progressTargetRef.current = null;
+            setLoading(true);
             setPodcast(null);
             setTranscriptRecord(null);
             setAudioUrl(null);
             setAudioStatus('');
             setAudioError('');
             reset();
+            resumePositionRef.current = null;
+            offlineRecordRef.current = null;
+            lastProgressSaveRef.current = 0;
+
+            if (offlineKey) {
+                try {
+                    const record = await getOfflineEpisode(offlineKey);
+                    if (cancelled) return;
+                    if (!hasOfflineContent(record)) throw new Error('Offline download unavailable or incomplete. Download this episode again when you are online.');
+                    offlineRecordRef.current = record;
+                    const saved = listeningState(getListeningSnapshot()[listeningKey(record.source, record.podcast.id)] || record);
+                    const position = pendingAutoplayRef.current === offlineKey || saved.completed ? 0 : saved.position;
+                    resumePositionRef.current = position;
+                    progressTargetRef.current = { key: offlineKey, source: record.source, id: record.podcast.id, position, duration: record.duration, completed: saved.completed };
+                    setPodcast(record.podcast);
+                    setLoadedEpisodeKey(offlineKey);
+                    setTranscriptRecord({ segments: record.segments });
+                } catch (error) {
+                    if (!cancelled) setAudioError(error.message);
+                } finally {
+                    if (!cancelled) setLoading(false);
+                }
+                return;
+            }
 
             if (!isSupabaseConfigured()) {
+                setLoading(false);
                 return;
             }
 
@@ -76,7 +131,20 @@ export function PlayerPage() {
                     .single();
 
                 if (podError) throw podError;
+                if (cancelled) return;
+                const source = currentSource();
+                let savedRecord = getListeningSnapshot()[listeningKey(source, pod.id)];
+                if (!savedRecord) {
+                    try { savedRecord = await getOfflineEpisodeSummary(await episodeKey(source, pod.id)); }
+                    catch { /* Online playback is available even if offline storage cannot be read. */ }
+                }
+                if (cancelled) return;
+                const saved = listeningState(savedRecord);
+                const position = pendingAutoplayRef.current === id || saved.completed ? 0 : saved.position;
+                resumePositionRef.current = position;
+                progressTargetRef.current = { source, id: pod.id, position, duration: saved.duration, completed: saved.completed };
                 setPodcast(pod);
+                setLoadedEpisodeKey(id);
 
                 // Get Transcript
                 const { data: trans } = await supabase
@@ -86,21 +154,31 @@ export function PlayerPage() {
                     .single();
 
                 // It's possible transcript isn't ready yet or failed
-                if (trans) {
+                if (trans && !cancelled) {
                     setTranscriptRecord({
                         segments: trans.content // content is JSONB
                     });
                 }
             } catch (err) {
                 console.error("Failed to load player data", err);
+                if (!cancelled) setAudioError('Cannot load this course online. Open Offline to play a downloaded copy.');
             } finally {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
             }
         }
         fetchData();
-    }, [id, reset]);
+        return () => { cancelled = true; flushProgress(); progressTargetRef.current = null; };
+    }, [id, offlineKey, reset, flushProgress]);
 
     useEffect(() => {
+        if (loadedEpisodeKey !== (offlineKey || id)) return undefined;
+        if (offlineKey && podcast && offlineRecordRef.current) {
+            const localUrl = offlineAudioUrl(offlineKey);
+            const url = localUrl || URL.createObjectURL(offlineRecordRef.current.audioBlob);
+            setAudioUrl(url);
+            setAudioStatus('Playing offline · audio and subtitles stored on this device.');
+            return () => { if (!localUrl) URL.revokeObjectURL(url); };
+        }
         if (!podcast?.audio_url) return undefined;
 
         let cancelled = false;
@@ -108,12 +186,12 @@ export function PlayerPage() {
 
         async function prepareAudio() {
             const streamUrl = getPlayableAudioUrl(podcast.audio_url);
-            setAudioUrl(streamUrl);
-            setAudioStatus('Streaming remote audio. Checking local cache...');
+            setAudioStatus('Preparing audio...');
             setAudioError('');
 
             try {
                 const cached = await checkAudioCache(podcast.id, podcast.audio_url);
+                if (cancelled) return;
                 if (cached) {
                     const objectUrl = URL.createObjectURL(cached.audioBlob);
                     revokeCurrent = () => URL.revokeObjectURL(objectUrl);
@@ -122,6 +200,9 @@ export function PlayerPage() {
                         setAudioStatus('Ready from local cache.');
                     }
                 } else {
+                    // Select one source per episode: a late cache hit must never
+                    // replace an already playing stream and interrupt playback.
+                    setAudioUrl(streamUrl);
                     cacheAudioForPodcast(podcast.id, podcast.audio_url, (message) => {
                         if (!cancelled) {
                             setAudioStatus(`Streaming remote audio. ${message}`);
@@ -155,38 +236,22 @@ export function PlayerPage() {
             cancelled = true;
             revokeCurrent();
         };
-    }, [podcast]);
-
-    // When audio URL changes, wait a bit then check duration
-    useEffect(() => {
-        if (audioUrl) {
-            // Give the browser time to load metadata
-            const timer = setTimeout(() => {
-                checkDuration();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-        return undefined;
-    }, [audioUrl, checkDuration]);
+    }, [podcast, offlineKey, id, loadedEpisodeKey]);
 
     useEffect(() => {
-        if (!audioUrl || !podcast || podcast.id !== id || !pendingAutoplayRef.current) return undefined;
-
-        const timer = setTimeout(() => {
-            if (!pendingAutoplayRef.current) return;
-            pendingAutoplayRef.current = false;
-            playFrom(0);
-        }, 120);
-
-        return () => clearTimeout(timer);
-    }, [audioUrl, id, playFrom, podcast]);
+        if (loading || !audioUrl || loadedEpisodeKey !== (offlineKey || id) || pendingAutoplayRef.current !== (offlineKey || id)) return;
+        pendingAutoplayRef.current = null;
+        // The persistent audio element now has its final source. play() waits for
+        // buffering; no guessed timeout or canplay listener can lose the intent.
+        play();
+    }, [audioUrl, id, offlineKey, play, loading, loadedEpisodeKey]);
 
     useEffect(() => {
         if (sleepTimer?.type !== 'time') return undefined;
 
         const deadline = Number(sleepTimer.deadline);
         const expireTimer = () => {
-            pendingAutoplayRef.current = false;
+            pendingAutoplayRef.current = null;
             pauseAudio();
             clearSleepTimer();
         };
@@ -209,6 +274,11 @@ export function PlayerPage() {
     }, [clearSleepTimer, pauseAudio, sleepTimer]);
 
     const handleAudioEnded = () => {
+        if (progressTargetRef.current) {
+            progressTargetRef.current.position = audioRef.current?.duration || progressTargetRef.current.duration;
+            progressTargetRef.current.completed = true;
+            flushProgress();
+        }
         if (sleepTimer?.type === 'episodes') {
             const remainingEpisodes = Number(sleepTimer.remainingEpisodes) || 1;
             if (remainingEpisodes <= 1) {
@@ -221,8 +291,20 @@ export function PlayerPage() {
                 remainingEpisodes: remainingEpisodes - 1,
             });
         } else if (sleepTimer?.type === 'time' && Number(sleepTimer.deadline) <= Date.now()) {
-            pendingAutoplayRef.current = false;
+            pendingAutoplayRef.current = null;
             clearSleepTimer();
+            return;
+        }
+
+        if (offlineKey) {
+            try {
+                const queue = JSON.parse(sessionStorage.getItem('podfluent-offline-queue') || '[]');
+                const index = queue.indexOf(offlineKey);
+                if (index >= 0 && queue[index + 1]) {
+                    pendingAutoplayRef.current = queue[index + 1];
+                    navigate('/offline/player/' + queue[index + 1], { replace: true });
+                }
+            } catch { /* Stop at the end if the local queue is unavailable. */ }
             return;
         }
 
@@ -233,7 +315,7 @@ export function PlayerPage() {
 
         if (!nextId) return;
 
-        pendingAutoplayRef.current = true;
+        pendingAutoplayRef.current = String(nextId);
         navigate('/player/' + nextId, { replace: true });
     };
 
@@ -272,6 +354,10 @@ export function PlayerPage() {
     };
 
     const handleWordClick = async (wordObj, sentence) => {
+        if (offlineKey) {
+            if (wordObj.start !== undefined) seek(wordObj.start);
+            return;
+        }
         if (vocabProvider === 'openai' && !openaiApiKey) {
             alert("Please set OpenAI-compatible API key to generate vocabulary.");
             return;
@@ -311,197 +397,240 @@ export function PlayerPage() {
         }
     };
 
-    if (loading) return <div className="container" style={{ display: 'flex', justifyContent: 'center', marginTop: 50 }}><Loader className={styles.spin} /></div>;
-    if (!isSupabaseConfigured()) {
+    const renderContent = () => {
+        if (loading) return <div className="container" role="status" style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 50 }}><Loader className={styles.spin} />Loading episode...</div>;
+        if (!offlineKey && !isSupabaseConfigured()) {
+            return (
+                <div className="container">
+                    <button className={styles.backBtn} onClick={() => navigate('/')}>
+                        <ArrowLeft size={20} />
+                        Library
+                    </button>
+                    <p>Supabase is not configured. Open Settings and fill in Supabase URL and anon key.</p>
+                </div>
+            );
+        }
+        if (!podcast) return <div className="container"><p>{audioError || 'Podcast not found'}</p><button className="offline-button" onClick={() => navigate('/offline')}>Open Offline</button></div>;
+
         return (
-            <div className="container">
-                <button className={styles.backBtn} onClick={() => navigate('/')}>
-                    <ArrowLeft size={20} />
-                    Library
-                </button>
-                <p>Supabase is not configured. Open Settings and fill in Supabase URL and anon key.</p>
+            <div className={styles.page}>
+                <header className={styles.header}>
+                    <button className={styles.backBtn} onClick={() => navigate(offlineKey ? '/offline' : '/')}>
+                        <ArrowLeft size={20} />
+                        {offlineKey ? 'Offline' : 'Library'}
+                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span className={styles.title}>{podcast.title}</span>
+                        <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                            Status: {podcast.status} |
+                            Dur: {formatTime(duration)}
+                        </span>
+                        {audioStatus && (
+                            <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
+                                {audioStatus}
+                            </span>
+                        )}
+                        {audioError && (
+                            <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
+                                {audioError}
+                            </span>
+                        )}
+                        {playbackError && (
+                            <span role="alert" style={{ fontSize: '0.85rem', color: '#f59e0b' }}>
+                                {playbackError}
+                            </span>
+                        )}
+                    </div>
+                </header>
+
+                <div className={styles.content}>
+                    <div className={styles.mainPanel}>
+                        {transcriptRecord ? (
+                            <TranscriptView
+                                transcript={transcriptRecord}
+                                currentTime={currentTime}
+                                onSeek={seek}
+                                onPlaySegment={playFrom}
+                                onWordClick={handleWordClick}
+                            />
+                        ) : (
+                            <div className={styles.noTranscript}>
+                                <p>No transcript available.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Helper/Vocab Sidebar (Temporary Overlay) */}
+                    {(vocabCard || loadingVocab) && (
+                        <div className={styles.vocabPanel}>
+                            <div className={styles.vocabHeader}>
+                                <h3>Vocabulary</h3>
+                                <button type="button" onClick={() => setVocabCard(null)} title="Close vocabulary">
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            {loadingVocab ? (
+                                <div className={styles.loading}>
+                                    <Loader className={styles.spin} /> Generating...
+                                </div>
+                            ) : (
+                                <div className={styles.vocabCard}>
+                                    <div className={styles.wordHeader}>
+                                        <h2 className={styles.vocabWord}>{vocabCard.word}</h2>
+                                        <Volume2 className={styles.speaker} onClick={() => speak(vocabCard.word)} size={20} />
+                                    </div>
+                                    <div className={styles.phonetic}>/{vocabCard.ipa}/</div>
+                                    <VocabularyDefinition className={styles.definition} text={vocabCard.definition || vocabCard.meaning} />
+                                    <div className={styles.translation}>{vocabCard.translation}</div>
+
+                                    <div className={styles.examples}>
+                                        <h4>Examples</h4>
+                                        <ul>
+                                            {(vocabCard.examples || []).map((ex, i) => (
+                                                <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    {ex}
+                                                    <Volume2 size={14} onClick={() => speak(ex)} style={{ cursor: 'pointer', opacity: 0.7 }} />
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    <div className={styles.originalContext}>
+                                        <strong>Context:</strong> "{vocabCard.context_sentence || vocabCard.originalSentence}"
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className={styles.playerBar}>
+                    <div className={styles.controlRow}>
+                        <div className={styles.sleepTimerControl}>
+                            <label
+                                className={[styles.sleepTimerPicker, sleepTimer ? styles.sleepTimerActive : ''].filter(Boolean).join(' ')}
+                                title="Set sleep timer"
+                            >
+                                <Timer size={19} />
+                                <select
+                                    value=""
+                                    onChange={handleSleepTimerChange}
+                                    aria-label="Set sleep timer"
+                                >
+                                    <option value="" disabled>Sleep timer</option>
+                                    <optgroup label="Episodes">
+                                        {EPISODE_TIMER_OPTIONS.map((count) => (
+                                            <option key={'episodes-' + count} value={'episodes:' + count}>
+                                                {count} {count === 1 ? 'episode' : 'episodes'}
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                    <optgroup label="Minutes">
+                                        {MINUTE_TIMER_OPTIONS.map((minutes) => (
+                                            <option key={'minutes-' + minutes} value={'minutes:' + minutes}>
+                                                {minutes} minutes
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                            </label>
+
+                            {sleepTimer && (
+                                <>
+                                    <span className={styles.sleepTimerStatus} aria-live="polite">
+                                        {sleepTimerLabel}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className={styles.sleepTimerCancel}
+                                        onClick={handleCancelSleepTimer}
+                                        aria-label="Cancel sleep timer"
+                                        title="Cancel sleep timer"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        <div className={styles.controls}>
+                            <button onClick={() => seek(currentTime - 5)} aria-label="Back 5 seconds"><SkipBack size={20} /></button>
+                            <button onClick={togglePlay} className={styles.playBtn} aria-label={isPlaying ? 'Pause' : 'Play'}>
+                                {isPlaying ? <Pause fill="white" /> : <Play fill="white" className={styles.playIconOffset} />}
+                            </button>
+                            <button onClick={() => seek(currentTime + 5)} aria-label="Forward 5 seconds"><SkipForward size={20} /></button>
+                        </div>
+
+                        <div className={styles.controlSpacer} />
+                    </div>
+
+                    <div className={styles.progress}>
+                        <span>{formatTime(currentTime)}</span>
+                        <input
+                            type="range"
+                            min="0"
+                            max={duration || 100}
+                            value={currentTime}
+                            onChange={handleSeek}
+                            className={styles.seekBar}
+                        />
+                        <span>{formatTime(duration)}</span>
+                    </div>
+
+                </div>
             </div>
         );
-    }
-    if (!podcast) return <div className="container">Podcast not found</div>;
+    };
 
+    // Keep the same media element across route loading states and episodes.
+    // Replacing it discards the browser's playback permission for that element.
     return (
-        <div className={styles.page}>
-            <header className={styles.header}>
-                <button className={styles.backBtn} onClick={() => navigate('/')}>
-                    <ArrowLeft size={20} />
-                    Library
-                </button>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span className={styles.title}>{podcast.title}</span>
-                    <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
-                        Status: {podcast.status} |
-                        Dur: {formatTime(duration)}
-                    </span>
-                    {audioStatus && (
-                        <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>
-                            {audioStatus}
-                        </span>
-                    )}
-                    {audioError && (
-                        <span style={{ fontSize: '0.75rem', color: '#f59e0b' }}>
-                            {audioError}
-                        </span>
-                    )}
-                </div>
-            </header>
-
-            <div className={styles.content}>
-                <div className={styles.mainPanel}>
-                    {transcriptRecord ? (
-                        <TranscriptView
-                            transcript={transcriptRecord}
-                            currentTime={currentTime}
-                            onSeek={seek}
-                            onPlaySegment={playFrom}
-                            onWordClick={handleWordClick}
-                        />
-                    ) : (
-                        <div className={styles.noTranscript}>
-                            <p>No transcript available.</p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Helper/Vocab Sidebar (Temporary Overlay) */}
-                {(vocabCard || loadingVocab) && (
-                    <div className={styles.vocabPanel}>
-                        <div className={styles.vocabHeader}>
-                            <h3>Vocabulary</h3>
-                            <button type="button" onClick={() => setVocabCard(null)} title="Close vocabulary">
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        {loadingVocab ? (
-                            <div className={styles.loading}>
-                                <Loader className={styles.spin} /> Generating...
-                            </div>
-                        ) : (
-                            <div className={styles.vocabCard}>
-                                <div className={styles.wordHeader}>
-                                    <h2 className={styles.vocabWord}>{vocabCard.word}</h2>
-                                    <Volume2 className={styles.speaker} onClick={() => speak(vocabCard.word)} size={20} />
-                                </div>
-                                <div className={styles.phonetic}>/{vocabCard.ipa}/</div>
-                                <div className={styles.definition}>{vocabCard.definition}</div>
-                                <div className={styles.translation}>{vocabCard.translation}</div>
-
-                                <div className={styles.examples}>
-                                    <h4>Examples</h4>
-                                    <ul>
-                                        {(vocabCard.examples || []).map((ex, i) => (
-                                            <li key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                {ex}
-                                                <Volume2 size={14} onClick={() => speak(ex)} style={{ cursor: 'pointer', opacity: 0.7 }} />
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </div>
-
-                                <div className={styles.originalContext}>
-                                    <strong>Context:</strong> "{vocabCard.context_sentence || vocabCard.originalSentence}"
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            <div className={styles.playerBar}>
-                <div className={styles.controlRow}>
-                    <div className={styles.sleepTimerControl}>
-                        <label
-                            className={[styles.sleepTimerPicker, sleepTimer ? styles.sleepTimerActive : ''].filter(Boolean).join(' ')}
-                            title="Set sleep timer"
-                        >
-                            <Timer size={19} />
-                            <select
-                                value=""
-                                onChange={handleSleepTimerChange}
-                                aria-label="Set sleep timer"
-                            >
-                                <option value="" disabled>Sleep timer</option>
-                                <optgroup label="Episodes">
-                                    {EPISODE_TIMER_OPTIONS.map((count) => (
-                                        <option key={'episodes-' + count} value={'episodes:' + count}>
-                                            {count} {count === 1 ? 'episode' : 'episodes'}
-                                        </option>
-                                    ))}
-                                </optgroup>
-                                <optgroup label="Minutes">
-                                    {MINUTE_TIMER_OPTIONS.map((minutes) => (
-                                        <option key={'minutes-' + minutes} value={'minutes:' + minutes}>
-                                            {minutes} minutes
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            </select>
-                        </label>
-
-                        {sleepTimer && (
-                            <>
-                                <span className={styles.sleepTimerStatus} aria-live="polite">
-                                    {sleepTimerLabel}
-                                </span>
-                                <button
-                                    type="button"
-                                    className={styles.sleepTimerCancel}
-                                    onClick={handleCancelSleepTimer}
-                                    aria-label="Cancel sleep timer"
-                                    title="Cancel sleep timer"
-                                >
-                                    <X size={16} />
-                                </button>
-                            </>
-                        )}
-                    </div>
-
-                    <div className={styles.controls}>
-                        <button onClick={() => seek(currentTime - 5)} aria-label="Back 5 seconds"><SkipBack size={20} /></button>
-                        <button onClick={togglePlay} className={styles.playBtn} aria-label={isPlaying ? 'Pause' : 'Play'}>
-                            {isPlaying ? <Pause fill="white" /> : <Play fill="white" className={styles.playIconOffset} />}
-                        </button>
-                        <button onClick={() => seek(currentTime + 5)} aria-label="Forward 5 seconds"><SkipForward size={20} /></button>
-                    </div>
-
-                    <div className={styles.controlSpacer} />
-                </div>
-
-                <div className={styles.progress}>
-                    <span>{formatTime(currentTime)}</span>
-                    <input
-                        type="range"
-                        min="0"
-                        max={duration || 100}
-                        value={currentTime}
-                        onChange={handleSeek}
-                        className={styles.seekBar}
-                    />
-                    <span>{formatTime(duration)}</span>
-                </div>
-
-                <audio
-                    key={podcast.id}
-                    ref={audioRef}
-                    src={audioUrl}
-                    preload="auto"
-                    onEnded={handleAudioEnded}
-                    onLoadedMetadata={checkDuration}
-                    onCanPlay={checkDuration}
-                    onLoadedData={checkDuration}
-                    onError={(event) => {
-                        const code = event.currentTarget.error?.code;
-                        setAudioError(`Audio playback failed${code ? ` (code ${code})` : ''}.`);
-                    }}
-                />
-            </div>
-        </div>
+        <>
+            <audio
+                ref={audioRef}
+                src={audioUrl || undefined}
+                preload="auto"
+                playsInline
+                onTimeUpdate={(event) => {
+                    if (resumePositionRef.current !== null || !progressTargetRef.current || event.currentTarget.ended) return;
+                    progressTargetRef.current.position = event.currentTarget.currentTime;
+                    progressTargetRef.current.duration = event.currentTarget.duration;
+                    if (Date.now() - lastProgressSaveRef.current < 3000) return;
+                    lastProgressSaveRef.current = Date.now();
+                    flushProgress();
+                }}
+                onPause={(event) => {
+                    if (progressTargetRef.current && resumePositionRef.current === null && !event.currentTarget.ended) {
+                        progressTargetRef.current.position = event.currentTarget.currentTime;
+                        flushProgress();
+                    }
+                }}
+                onSeeked={(event) => {
+                    if (progressTargetRef.current && resumePositionRef.current === null) {
+                        progressTargetRef.current.position = event.currentTarget.currentTime;
+                        flushProgress();
+                    }
+                }}
+                onEnded={handleAudioEnded}
+                onLoadedMetadata={(event) => {
+                    checkDuration();
+                    if (progressTargetRef.current) progressTargetRef.current.duration = event.currentTarget.duration;
+                    if (resumePositionRef.current !== null) {
+                        const savedPosition = resumePositionRef.current;
+                        resumePositionRef.current = null;
+                        seek(Math.min(savedPosition, event.currentTarget.duration || savedPosition));
+                    }
+                }}
+                onCanPlay={checkDuration}
+                onLoadedData={checkDuration}
+                onError={(event) => {
+                    const code = event.currentTarget.error?.code;
+                    setAudioError(`Audio playback failed${code ? ` (code ${code})` : ''}.`);
+                }}
+            />
+            {renderContent()}
+        </>
     );
 }
 

@@ -15,6 +15,7 @@ build can read already-processed Supabase data from any device.
 - Gemini fallback transcription for when the local engine is unavailable.
 - Click-to-learn vocabulary cards with definitions, examples, translations, and speech synthesis.
 - Cloud web read access through Cloudflare Pages, backed directly by Supabase.
+- Installable mobile PWA with batch flight downloads, verified offline audio/subtitles, saved playback position, and Flight Ready checks.
 - Optional local-network remote access through Cloudflare Tunnel.
 
 ## Requirements
@@ -126,6 +127,10 @@ npm run lint
 ```
 
 ## Cloud Web Deployment
+
+For iPhone Home Screen installation and flight downloads, see
+[the offline flight guide](docs/offline-flight.md). No paid Apple developer account
+or recurring signing is required. Downloaded courses live in the PWA's own local library.
 
 Use Cloudflare Pages when you want a hosted web app that does not depend on
 your local computer being on. The web app reads podcast data, transcripts,

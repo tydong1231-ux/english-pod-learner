@@ -75,6 +75,27 @@ Function, or let each trusted viewer enter their own key in Settings.
 After changing any `VITE_*` variable in Cloudflare Pages, redeploy the project.
 Vite embeds these values at build time.
 
+## Production release checklist
+
+- Production is `https://podcast.botly.cn/`, backed by the Cloudflare Pages
+  project `english-pod-learner` and GitHub `master`.
+- Fetch and compare `origin/master` with the complete working tree before
+  releasing. Preserve existing listening progress, offline playback and mobile
+  features. Do not publish a narrow patch from an older clean worktree while
+  leaving required feature files uncommitted.
+- Commit all dependencies of the release together (including new components,
+  hooks, styles and tests). Never commit `.env`, credentials or build output.
+- Run `npm run check`, then serve the web build on port 4173 and run
+  `npm run test:browser`. The browser suite uses synthetic data and checks
+  Library progress, playback continuity and both vocabulary providers, including
+  saved-card reload, no-root hiding and English → roots → Chinese ordering.
+- Push normally to `master` (no force push). Wait for GitHub CI and Cloudflare's
+  deployment check for the exact commit. Check the actual custom domain's
+  HTML/assets and functionality before reporting success, not only a preview URL.
+- Existing vocabulary cards are not regenerated. New roots are serialized by
+  the application into the existing `meaning` text column; no schema migration
+  is required. Both provider prompts share `src/lib/vocabularyRoots.js`.
+
 ## Routing
 
 `public/_redirects` is included so direct URLs like `/player/<id>` and browser

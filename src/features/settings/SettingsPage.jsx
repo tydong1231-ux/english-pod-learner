@@ -384,8 +384,9 @@ export function SettingsPage() {
                     </div>
 
                     <p className={styles.description}>
-                        Optional when Local WhisperX Engine is enabled. Required only for Gemini fallback,
-                        Gemini-only transcription, or Gemini vocabulary generation.
+                        {canUseLocalFeatures
+                            ? 'Optional when Local WhisperX Engine is enabled. Used for Gemini transcription or vocabulary generation.'
+                            : 'Optional. Used for vocabulary generation when you choose Gemini.'}
                         Your key is stored locally on this device.
                     </p>
 
@@ -439,7 +440,7 @@ export function SettingsPage() {
                 </div>
 
                 {/* AI Model Section */}
-                <div className={styles.section}>
+                {canUseLocalFeatures && <div className={styles.section}>
                     <div className={styles.sectionHeader}>
                         <h2>AI Model</h2>
                     </div>
@@ -460,8 +461,7 @@ export function SettingsPage() {
                             <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
                         </select>
                     </div>
-                </div>
-
+                </div>}
                 <div className={styles.section}>
                     <div className={styles.sectionHeader}>
                         <Key className={styles.icon} />
@@ -693,7 +693,7 @@ export function SettingsPage() {
                 )}
 
                 {/* Transcription Prompt Section */}
-                <div className={styles.section}>
+                {canUseLocalFeatures && <div className={styles.section}>
                     <div className={styles.sectionHeader}>
                         <FileText className={styles.icon} />
                         <h2>Transcription Prompt</h2>
@@ -737,7 +737,7 @@ Return a STRICT JSON object with this structure:
                             <RefreshCcw size={14} /> Reset to Default
                         </button>
                     </div>
-                </div>
+                </div>}
             </div>
         </div>
     );
