@@ -45,7 +45,7 @@ Rules:
 `;
 
         const parsed = await this.generateJson(prompt);
-        return validateExercise(parsed, sourceSentence);
+        return validateExercise(parsed, sourceSentence, excludedPhrases);
     }
 
     async regenerateQuestion({ phrase, sourceSentence, previousQuestion }) {
@@ -81,7 +81,7 @@ Generate one new specific open question that naturally invites the target phrase
     }
 }
 
-function validateExercise(value, sourceSentence) {
+export function validateExercise(value, sourceSentence, excludedPhrases = []) {
     if (value?.noAlternative === true) {
         return { noAlternative: true, phrase: '', meaning: '', question: '', examples: [] };
     }
@@ -97,16 +97,25 @@ function validateExercise(value, sourceSentence) {
         throw new Error('Gemini returned an incomplete Remix exercise');
     }
 
-    if (!normalizeText(sourceSentence).includes(normalizeText(phrase))) {
+    if (isExcludedPhrase(phrase, excludedPhrases)) {
+        throw new Error('Gemini repeated an excluded Remix phrase');
+    }
+
+    if (!containsWholePhrase(sourceSentence, phrase)) {
         throw new Error('Gemini selected a phrase that is not in the source sentence');
     }
 
-    const phraseKey = normalizeText(phrase);
-    if (examples.some((example) => !normalizeText(example.sentence).includes(phraseKey))) {
+    if (examples.some((example) => !containsWholePhrase(example.sentence, phrase))) {
         throw new Error('Gemini returned an example without the target phrase');
     }
 
-    return { phrase, meaning, question, examples, noAlternative: false };
+    const phraseKey = normalizeText(phrase);
+    const sanitizedExamples = examples.map((example) => ({
+        ...example,
+        usedRemixPhrases: example.usedRemixPhrases.filter((candidate) => normalizeText(candidate) !== phraseKey),
+    }));
+
+    return { phrase, meaning, question, examples: sanitizedExamples, noAlternative: false };
 }
 
 function normalizeExample(value) {
@@ -129,6 +138,35 @@ function normalizeStringArray(value) {
     return Array.isArray(value)
         ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
         : [];
+}
+
+export function containsWholePhrase(text, phrase) {
+    const textTokens = tokenize(text);
+    const phraseTokens = tokenize(phrase);
+    if (phraseTokens.length === 0 || phraseTokens.length > textTokens.length) return false;
+
+    for (let i = 0; i <= textTokens.length - phraseTokens.length; i += 1) {
+        let matches = true;
+        for (let j = 0; j < phraseTokens.length; j += 1) {
+            if (textTokens[i + j] !== phraseTokens[j]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return true;
+    }
+
+    return false;
+}
+
+export function isExcludedPhrase(phrase, excludedPhrases = []) {
+    const phraseKey = normalizeText(phrase);
+    return excludedPhrases.some((candidate) => normalizeText(candidate) === phraseKey);
+}
+
+function tokenize(value) {
+    const normalized = normalizeText(value);
+    return normalized ? normalized.split(' ') : [];
 }
 
 function normalizeText(value) {
