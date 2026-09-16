@@ -40,10 +40,28 @@ create table if not exists public.vocabulary (
   unique (word, source_podcast_id)
 );
 
+create table if not exists public.remix_items (
+  id uuid primary key default gen_random_uuid(),
+  source_podcast_id uuid not null references public.podcasts(id) on delete cascade,
+  source_segment_index integer not null,
+  source_sentence text not null,
+  source_start double precision,
+  source_end double precision,
+  phrase text not null,
+  meaning text,
+  question text not null,
+  examples jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (source_podcast_id, source_segment_index)
+);
+
 create index if not exists podcasts_created_at_idx on public.podcasts(created_at desc);
 create index if not exists podcasts_folder_idx on public.podcasts(folder);
 create index if not exists vocabulary_created_at_idx on public.vocabulary(created_at desc);
 create index if not exists vocabulary_word_idx on public.vocabulary(word);
+create index if not exists remix_items_updated_at_idx on public.remix_items(updated_at desc);
+create index if not exists remix_items_phrase_idx on public.remix_items(phrase);
 
 insert into storage.buckets (id, name, public)
 values ('audio-files', 'audio-files', true)
@@ -52,6 +70,7 @@ on conflict (id) do nothing;
 alter table public.podcasts enable row level security;
 alter table public.transcripts enable row level security;
 alter table public.vocabulary enable row level security;
+alter table public.remix_items enable row level security;
 
 -- Private personal deployment policies. Replace these with authenticated user
 -- policies before operating a shared instance.
@@ -70,6 +89,12 @@ with check (true);
 drop policy if exists "vocabulary_private_personal_all" on public.vocabulary;
 create policy "vocabulary_private_personal_all"
 on public.vocabulary for all
+using (true)
+with check (true);
+
+drop policy if exists "remix_items_private_personal_all" on public.remix_items;
+create policy "remix_items_private_personal_all"
+on public.remix_items for all
 using (true)
 with check (true);
 

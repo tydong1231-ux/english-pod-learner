@@ -6,6 +6,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage';
 import { PlayerPage } from './features/player/PlayerPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { VocabularyPage } from './features/vocabulary/VocabularyPage';
+import { RemixPage } from './features/remix/RemixPage';
 import { OfflinePage } from './features/offline/OfflinePage';
 import { isRemoteAccess } from './lib/env';
 import { loadRuntimeEnvConfig } from './lib/runtimeConfig';
@@ -57,6 +58,7 @@ function App() {
           <Route index element={<DashboardPage />} />
           <Route path="player/:id" element={<PlayerPage />} />
           <Route path="vocabulary" element={<VocabularyPage />} />
+          <Route path="remix" element={<RemixPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

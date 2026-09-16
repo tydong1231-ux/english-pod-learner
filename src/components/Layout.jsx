@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { BookOpen, Library, Settings, Tv, HardDrive } from 'lucide-react';
+import { BookOpen, Library, Settings, Tv, HardDrive, Sparkles } from 'lucide-react';
 import { canUseLocalFeatures } from '../lib/env';
 import { useStore } from '../store';
 import { isLocalEngineDisabled, RUNTIME_CONFIG_CHANGED } from '../lib/runtimeConfig';
@@ -26,7 +26,6 @@ export function Layout() {
 
     return (
         <div className={styles.appShell}>
-            {/* Draggable Area */}
             {canUseLocalFeatures && <div className={styles.dragRegion} />}
 
             <aside className={`${styles.sidebar} ${isPlayerPage ? styles.sidebarHiddenOnMobile : ''}`}>
@@ -50,6 +49,14 @@ export function Layout() {
                     >
                         <BookOpen size={20} />
                         <span>Vocabulary</span>
+                    </NavLink>
+
+                    <NavLink
+                        to="/remix"
+                        className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}
+                    >
+                        <Sparkles size={20} />
+                        <span>Remix</span>
                     </NavLink>
 
                     <NavLink to="/offline" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>

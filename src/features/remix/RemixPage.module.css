@@ -1,0 +1,145 @@
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+}
+
+.titleRow {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.titleRow h1 {
+    margin: 0;
+}
+
+.subtitle {
+    margin: 0.35rem 0 0;
+    color: var(--text-muted);
+}
+
+.list {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.card {
+    padding: 1rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    background: var(--bg-surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.cardTop {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.phrase {
+    color: var(--text-main);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.meaning,
+.podcast,
+.source {
+    color: var(--text-muted);
+    font-size: 0.84rem;
+}
+
+.meaning {
+    margin-top: 0.25rem;
+}
+
+.podcast {
+    flex-shrink: 0;
+}
+
+.question {
+    margin-top: 0.9rem;
+    color: var(--text-main);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.source {
+    margin-top: 0.65rem;
+    line-height: 1.45;
+}
+
+.examplesButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.85rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-primary);
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.examples {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.8rem;
+}
+
+.example {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    gap: 0.45rem;
+    padding: 0.7rem;
+    border-radius: 9px;
+    background: var(--bg-nav-active-base);
+    color: var(--text-main);
+    line-height: 1.45;
+}
+
+.state,
+.error,
+.empty {
+    padding: 1rem;
+    border-radius: 10px;
+}
+
+.state {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-muted);
+}
+
+.error {
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.12);
+}
+
+.empty {
+    color: var(--text-muted);
+    background: var(--bg-nav-active-base);
+}
+
+.spin {
+    animation: remixPageSpin 0.9s linear infinite;
+}
+
+@keyframes remixPageSpin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 600px) {
+    .cardTop {
+        flex-direction: column;
+    }
+}

@@ -1,0 +1,136 @@
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const REMIX_SYSTEM_PROMPT = 'Create natural English speaking practice. Return JSON only and follow the requested schema exactly.';
+
+export class RemixGemini {
+    constructor(apiKey, modelName = 'gemini-2.0-flash-exp') {
+        if (!apiKey) throw new Error('Gemini API key is required for Remix');
+
+        const genAI = new GoogleGenerativeAI(apiKey);
+        this.model = genAI.getGenerativeModel({
+            model: modelName,
+            systemInstruction: REMIX_SYSTEM_PROMPT,
+            generationConfig: {
+                responseMimeType: 'application/json',
+                maxOutputTokens: 4096,
+            },
+        });
+    }
+
+    async generateExercise({ sourceSentence, excludedPhrases = [], vocabulary = [], previousPhrases = [] }) {
+        const prompt = `
+Source sentence: ${JSON.stringify(sourceSentence)}
+Excluded phrases: ${JSON.stringify(excludedPhrases)}
+Vocabulary candidates: ${JSON.stringify(vocabulary)}
+Previous Remix phrase candidates: ${JSON.stringify(previousPhrases)}
+
+Return:
+{
+  "phrase": "",
+  "meaning": "",
+  "question": "",
+  "examples": [
+    {"sentence":"","usedVocabulary":[],"usedRemixPhrases":[]},
+    {"sentence":"","usedVocabulary":[],"usedRemixPhrases":[]},
+    {"sentence":"","usedVocabulary":[],"usedRemixPhrases":[]}
+  ],
+  "noAlternative": false
+}
+
+Rules:
+1. phrase: copy the single most useful reusable spoken-English phrase from Source, usually 2-10 words. Never choose an excluded phrase. If none remains, set phrase="" and noAlternative=true.
+2. question: one specific open question that naturally invites the phrase. Topic priority: AI accounting/product management > work/job > daily life.
+3. examples: exactly 3 natural, complete sentences; all must use the target phrase. When natural, at least 2 use vocabulary candidates and at least 1 also uses a previous Remix phrase. Never force awkward combinations.
+4. meaning: one brief plain-English explanation.
+`;
+
+        const parsed = await this.generateJson(prompt);
+        return validateExercise(parsed, sourceSentence);
+    }
+
+    async regenerateQuestion({ phrase, sourceSentence, previousQuestion }) {
+        const prompt = `
+Target phrase: ${JSON.stringify(phrase)}
+Source sentence: ${JSON.stringify(sourceSentence)}
+Previous question: ${JSON.stringify(previousQuestion || '')}
+
+Return: {"question":""}
+
+Generate one new specific open question that naturally invites the target phrase. Topic priority: AI accounting/product management > work/job > daily life. It should support a 20-60 second spoken answer. Do not repeat or lightly paraphrase the previous question.
+`;
+
+        const parsed = await this.generateJson(prompt);
+        const question = typeof parsed?.question === 'string' ? parsed.question.trim() : '';
+        if (!question) throw new Error('Gemini returned an empty Remix question');
+        return question;
+    }
+
+    async generateJson(prompt) {
+        try {
+            const result = await this.model.generateContent(prompt);
+            const response = await result.response;
+            const text = response.text();
+            try {
+                return JSON.parse(text);
+            } catch {
+                return JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+            }
+        } catch (error) {
+            throw new Error(`Gemini Remix error: ${error.message}`);
+        }
+    }
+}
+
+function validateExercise(value, sourceSentence) {
+    if (value?.noAlternative === true) {
+        return { noAlternative: true, phrase: '', meaning: '', question: '', examples: [] };
+    }
+
+    const phrase = typeof value?.phrase === 'string' ? value.phrase.trim() : '';
+    const meaning = typeof value?.meaning === 'string' ? value.meaning.trim() : '';
+    const question = typeof value?.question === 'string' ? value.question.trim() : '';
+    const examples = Array.isArray(value?.examples)
+        ? value.examples.slice(0, 3).map(normalizeExample).filter(Boolean)
+        : [];
+
+    if (!phrase || !question || examples.length !== 3) {
+        throw new Error('Gemini returned an incomplete Remix exercise');
+    }
+
+    if (!normalizeText(sourceSentence).includes(normalizeText(phrase))) {
+        throw new Error('Gemini selected a phrase that is not in the source sentence');
+    }
+
+    const phraseKey = normalizeText(phrase);
+    if (examples.some((example) => !normalizeText(example.sentence).includes(phraseKey))) {
+        throw new Error('Gemini returned an example without the target phrase');
+    }
+
+    return { phrase, meaning, question, examples, noAlternative: false };
+}
+
+function normalizeExample(value) {
+    if (typeof value === 'string') {
+        const sentence = value.trim();
+        return sentence ? { sentence, usedVocabulary: [], usedRemixPhrases: [] } : null;
+    }
+
+    const sentence = typeof value?.sentence === 'string' ? value.sentence.trim() : '';
+    if (!sentence) return null;
+
+    return {
+        sentence,
+        usedVocabulary: normalizeStringArray(value.usedVocabulary),
+        usedRemixPhrases: normalizeStringArray(value.usedRemixPhrases),
+    };
+}
+
+function normalizeStringArray(value) {
+    return Array.isArray(value)
+        ? value.filter((item) => typeof item === 'string' && item.trim()).map((item) => item.trim())
+        : [];
+}
+
+function normalizeText(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
+}
