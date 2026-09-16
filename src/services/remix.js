@@ -3,6 +3,7 @@ import { RemixGemini } from '../lib/remixGemini';
 
 const CANDIDATE_SAMPLE_SIZE = 5;
 const CANDIDATE_QUERY_LIMIT = 200;
+const MAX_GENERATION_ATTEMPTS = 2;
 
 export class RemixService {
     static async getBySource(sourcePodcastId, sourceSegmentIndex) {
@@ -38,14 +39,24 @@ export class RemixService {
         excludedPhrases = [],
     }) {
         ensureSupabase();
-        const candidates = await loadCandidates();
+        const candidates = await loadCandidates(excludedPhrases);
         const gemini = new RemixGemini(apiKey, modelName);
-        const generated = await gemini.generateExercise({
-            sourceSentence: segment.text,
-            excludedPhrases,
-            vocabulary: candidates.vocabulary,
-            previousPhrases: candidates.previousPhrases,
-        });
+        let generated;
+
+        for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+            try {
+                generated = await gemini.generateExercise({
+                    sourceSentence: segment.text,
+                    excludedPhrases,
+                    vocabulary: candidates.vocabulary,
+                    previousPhrases: candidates.previousPhrases,
+                });
+                break;
+            } catch (error) {
+                const repeatedExcludedPhrase = error?.message?.includes('repeated an excluded Remix phrase');
+                if (!repeatedExcludedPhrase || attempt === MAX_GENERATION_ATTEMPTS) throw error;
+            }
+        }
 
         if (generated.noAlternative) return generated;
 
@@ -93,7 +104,7 @@ export class RemixService {
     }
 }
 
-async function loadCandidates() {
+async function loadCandidates(excludedPhrases = []) {
     const [vocabularyResult, remixResult] = await Promise.all([
         supabase
             .from('vocabulary')
@@ -114,11 +125,19 @@ async function loadCandidates() {
         CANDIDATE_SAMPLE_SIZE,
     );
     const previousPhrases = sampleUnique(
-        (remixResult.data || []).map((item) => item.phrase),
+        filterExcludedPhrases(
+            (remixResult.data || []).map((item) => item.phrase),
+            excludedPhrases,
+        ),
         CANDIDATE_SAMPLE_SIZE,
     );
 
     return { vocabulary, previousPhrases };
+}
+
+export function filterExcludedPhrases(values, excludedPhrases = []) {
+    const excluded = new Set(excludedPhrases.map(normalizeText).filter(Boolean));
+    return values.filter((value) => !excluded.has(normalizeText(value)));
 }
 
 function sampleUnique(values, count) {
@@ -132,6 +151,10 @@ function sampleUnique(values, count) {
     return pool.slice(0, count);
 }
 
+function normalizeText(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
+}
+
 function ensureSupabase() {
     if (!isSupabaseConfigured()) {
         throw new Error('Supabase is not configured. Open Settings first.');
@@ -140,7 +163,7 @@ function ensureSupabase() {
 
 function friendlyRemixError(error) {
     const message = error?.message || String(error);
-    if (message.includes('remix_items') || message.includes('schema cache')) {
+    if (message.includes('remix_items') || message.includes('schema cache') || error?.code === 'PGRST205') {
         return new Error('Remix database table is missing. Apply the latest docs/supabase-schema.sql first.');
     }
     return error instanceof Error ? error : new Error(message);
