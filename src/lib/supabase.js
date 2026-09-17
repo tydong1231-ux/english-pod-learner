@@ -44,13 +44,15 @@ export const supabase = new Proxy({}, {
 
 export async function uploadAudio(file) {
     const client = getSupabaseClient();
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}.${fileExt}`;
-    const filePath = `${fileName}`;
+    const fileExt = getAudioFileExtension(file.name);
+    // Uploads may start in the same millisecond when several files are imported
+    // together. A timestamp-only filename can therefore make two records point
+    // at (and race to overwrite) the same storage object.
+    const filePath = `${crypto.randomUUID()}.${fileExt}`;
 
     const { error } = await client.storage
         .from(AUDIO_BUCKET)
-        .upload(filePath, file);
+        .upload(filePath, file, { upsert: false });
 
     if (error) {
         throw new Error(`Supabase Storage upload failed: ${formatSupabaseError(error)}`);
@@ -61,6 +63,11 @@ export async function uploadAudio(file) {
         .getPublicUrl(filePath);
 
     return publicUrl;
+}
+
+function getAudioFileExtension(fileName) {
+    const extension = fileName?.split('.').pop()?.trim().toLowerCase();
+    return extension && /^[a-z0-9]{1,10}$/.test(extension) ? extension : 'audio';
 }
 
 export async function testSupabaseConnection({ supabaseUrl, supabaseAnonKey }) {

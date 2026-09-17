@@ -109,11 +109,17 @@ export class PodcastService {
         try {
             const setProgress = async (message) => {
                 if (onStatusUpdate) onStatusUpdate(message);
-                const { error } = await supabase
-                    .from('podcasts')
-                    .update({ status: PodcastStatus.PROCESSING, progress: message, error: null })
-                    .eq('id', id);
-                if (error) {
+                try {
+                    const { error } = await supabase
+                        .from('podcasts')
+                        .update({ status: PodcastStatus.PROCESSING, progress: message, error: null })
+                        .eq('id', id);
+                    if (error) {
+                        console.warn('[PodcastService] Failed to update progress:', error);
+                    }
+                } catch (error) {
+                    // Progress is informative only. A temporary Supabase outage
+                    // must not discard a valid local transcription.
                     console.warn('[PodcastService] Failed to update progress:', error);
                 }
             };
