@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { RemixGemini, isExcludedPhrase } from '../lib/remixGemini';
+import { RemixOpenAI, isExcludedPhrase } from '../lib/remixOpenAI';
 
 const CANDIDATE_SAMPLE_SIZE = 5;
 const CANDIDATE_QUERY_LIMIT = 200;
@@ -8,47 +8,29 @@ const MAX_GENERATION_ATTEMPTS = 2;
 export class RemixService {
     static async getBySource(sourcePodcastId, sourceSegmentIndex) {
         ensureSupabase();
-        const { data, error } = await supabase
-            .from('remix_items')
-            .select('*')
-            .eq('source_podcast_id', sourcePodcastId)
-            .eq('source_segment_index', sourceSegmentIndex)
-            .maybeSingle();
-
+        const { data, error } = await supabase.from('remix_items').select('*').eq('source_podcast_id', sourcePodcastId).eq('source_segment_index', sourceSegmentIndex).maybeSingle();
         if (error) throw friendlyRemixError(error);
         return data;
     }
 
     static async list() {
         ensureSupabase();
-        const { data, error } = await supabase
-            .from('remix_items')
-            .select('*, podcasts(title)')
-            .order('updated_at', { ascending: false });
-
+        const { data, error } = await supabase.from('remix_items').select('*, podcasts(title)').order('updated_at', { ascending: false });
         if (error) throw friendlyRemixError(error);
         return data || [];
     }
 
-    static async generate({
-        sourcePodcastId,
-        sourceSegmentIndex,
-        segment,
-        apiKey,
-        modelName,
-        excludedPhrases = [],
-    }) {
+    static async generate({ sourcePodcastId, sourceSegmentIndex, segment, openaiApiKey, openaiBaseUrl, openaiModel, excludedPhrases = [] }) {
         ensureSupabase();
-        const gemini = new RemixGemini(apiKey, modelName);
+        const provider = new RemixOpenAI({ apiKey: openaiApiKey, baseUrl: openaiBaseUrl, model: openaiModel });
         let generated;
 
         for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
             try {
-                const selected = await gemini.selectPhrase({ sourceSentence: segment.text, excludedPhrases });
+                const selected = await provider.selectPhrase({ sourceSentence: segment.text, excludedPhrases });
                 if (selected.noAlternative) return selected;
-                // Select first, then sample: the target cannot enter its own reuse pool.
                 const candidates = await loadCandidates([...excludedPhrases, selected.phrase]);
-                generated = await gemini.generateExercise({
+                generated = await provider.generateExercise({
                     sourceSentence: segment.text,
                     targetPhrase: selected.phrase,
                     excludedPhrases,
@@ -77,32 +59,16 @@ export class RemixService {
             updated_at: new Date().toISOString(),
         };
 
-        const { data, error } = await supabase
-            .from('remix_items')
-            .upsert(payload, { onConflict: 'source_podcast_id,source_segment_index' })
-            .select()
-            .single();
-
+        const { data, error } = await supabase.from('remix_items').upsert(payload, { onConflict: 'source_podcast_id,source_segment_index' }).select().single();
         if (error) throw friendlyRemixError(error);
         return { ...data, noAlternative: false };
     }
 
-    static async regenerateQuestion(item, apiKey, modelName) {
+    static async regenerateQuestion(item, { openaiApiKey, openaiBaseUrl, openaiModel }) {
         ensureSupabase();
-        const gemini = new RemixGemini(apiKey, modelName);
-        const question = await gemini.regenerateQuestion({
-            phrase: item.phrase,
-            sourceSentence: item.source_sentence,
-            previousQuestion: item.question,
-        });
-
-        const { data, error } = await supabase
-            .from('remix_items')
-            .update({ question, updated_at: new Date().toISOString() })
-            .eq('id', item.id)
-            .select()
-            .single();
-
+        const provider = new RemixOpenAI({ apiKey: openaiApiKey, baseUrl: openaiBaseUrl, model: openaiModel });
+        const question = await provider.regenerateQuestion({ phrase: item.phrase, sourceSentence: item.source_sentence, previousQuestion: item.question });
+        const { data, error } = await supabase.from('remix_items').update({ question, updated_at: new Date().toISOString() }).eq('id', item.id).select().single();
         if (error) throw friendlyRemixError(error);
         return data;
     }
@@ -110,32 +76,14 @@ export class RemixService {
 
 async function loadCandidates(excludedPhrases = []) {
     const [vocabularyResult, remixResult] = await Promise.all([
-        supabase
-            .from('vocabulary')
-            .select('word')
-            .limit(CANDIDATE_QUERY_LIMIT),
-        supabase
-            .from('remix_items')
-            .select('phrase')
-            .order('updated_at', { ascending: false })
-            .limit(CANDIDATE_QUERY_LIMIT),
+        supabase.from('vocabulary').select('word').limit(CANDIDATE_QUERY_LIMIT),
+        supabase.from('remix_items').select('phrase').order('updated_at', { ascending: false }).limit(CANDIDATE_QUERY_LIMIT),
     ]);
-
     if (vocabularyResult.error) throw friendlyRemixError(vocabularyResult.error);
     if (remixResult.error) throw friendlyRemixError(remixResult.error);
 
-    const vocabulary = sampleUnique(
-        (vocabularyResult.data || []).map((item) => item.word),
-        CANDIDATE_SAMPLE_SIZE,
-    );
-    const previousPhrases = sampleUnique(
-        filterExcludedPhrases(
-            (remixResult.data || []).map((item) => item.phrase),
-            excludedPhrases,
-        ),
-        CANDIDATE_SAMPLE_SIZE,
-    );
-
+    const vocabulary = sampleUnique((vocabularyResult.data || []).map((item) => item.word), CANDIDATE_SAMPLE_SIZE);
+    const previousPhrases = sampleUnique(filterExcludedPhrases((remixResult.data || []).map((item) => item.phrase), excludedPhrases), CANDIDATE_SAMPLE_SIZE);
     return { vocabulary, previousPhrases };
 }
 
@@ -145,19 +93,15 @@ export function filterExcludedPhrases(values, excludedPhrases = []) {
 
 function sampleUnique(values, count) {
     const pool = [...new Set(values.filter((value) => typeof value === 'string' && value.trim()).map((value) => value.trim()))];
-
     for (let i = pool.length - 1; i > 0; i -= 1) {
         const j = Math.floor(Math.random() * (i + 1));
         [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-
     return pool.slice(0, count);
 }
 
 function ensureSupabase() {
-    if (!isSupabaseConfigured()) {
-        throw new Error('Supabase is not configured. Open Settings first.');
-    }
+    if (!isSupabaseConfigured()) throw new Error('Supabase is not configured. Open Settings first.');
 }
 
 function friendlyRemixError(error) {
