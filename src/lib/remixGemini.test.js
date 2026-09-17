@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { containsWholePhrase, isExcludedPhrase, validateExercise } from './remixGemini';
+import { containsWholePhrase, isExcludedPhrase, validateExercise } from './remixOpenAI';
 
 function exercise(phrase, overrides = {}) {
     return {
@@ -21,11 +21,11 @@ describe('Remix phrase validation', () => {
         expect(containsWholePhrase('I wouldn’t necessarily say that.', "I wouldn't necessarily say that")).toBe(true);
         expect(isExcludedPhrase("I wouldn't necessarily say that", ['I wouldn’t necessarily say that'])).toBe(true);
     });
+
     it('requires whole-word phrase matches in the source', () => {
         expect(containsWholePhrase('AI accounting products are evolving quickly.', 'accounting')).toBe(true);
         expect(containsWholePhrase('AI accounting products are evolving quickly.', 'count')).toBe(false);
-        expect(() => validateExercise(exercise('count'), 'AI accounting products are evolving quickly.'))
-            .toThrow('not in the source sentence');
+        expect(() => validateExercise(exercise('count'), 'AI accounting products are evolving quickly.')).toThrow('not in the source sentence');
     });
 
     it('rejects a phrase already shown in the current Remix session', () => {
@@ -49,12 +49,7 @@ describe('Remix phrase validation', () => {
                 { sentence: 'What we found was that users wanted faster setup.', usedVocabulary: [], usedRemixPhrases: [] },
             ],
         });
-
-        const result = validateExercise(
-            value,
-            'What we found was that users needed simpler onboarding.',
-        );
-
+        const result = validateExercise(value, 'What we found was that users needed simpler onboarding.');
         expect(result.examples[0].usedRemixPhrases).toEqual(['it comes down to']);
     });
 });
