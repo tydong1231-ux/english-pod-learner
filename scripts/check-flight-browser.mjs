@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { checkOnlineContinuousPlayback, checkOfflineContinuousPlayback } from './player-browser-checks.mjs';
 import { checkListeningProgress } from './listening-browser-checks.mjs';
 import { checkVocabularyRoots } from './vocabulary-browser-checks.mjs';
+import { checkRemix } from './remix-review-checks.mjs';
 const browsers = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const engine = process.env.TEST_BROWSER === 'webkit' ? 'webkit' : 'chromium';
 const browser = await browsers[engine].launch({ headless: true, executablePath: process.env.BROWSER_PATH || (engine === 'chromium' ? process.env.CHROMIUM_PATH : undefined) });
@@ -127,6 +128,7 @@ try {
     for (let index = 3; index <= 14; index++) courses.push({ ...courses[0], id: `flight-test-${index}`, title: `EnglishPod ${String(index).padStart(3, '0')} · ${['Making plans for the weekend', 'Asking for directions in a new city', 'A conversation at the coffee shop'][index % 3]}`, folder: index % 2 ? 'Daily life' : 'Travel English' });
     await checkListeningProgress(page, base, mockBase, courses);
     await checkVocabularyRoots(page, base, mockBase, courses[0].id);
+    await checkRemix(page, base, mockBase, courses[0].id);
     await page.goto(base + '/#/');
     await page.locator('[data-testid="library-episode"]').nth(13).waitFor();
     assert.equal(await page.getByRole('img', { name: 'Downloaded to this device' }).count(), 2);

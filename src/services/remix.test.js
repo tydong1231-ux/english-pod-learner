@@ -4,7 +4,6 @@ vi.mock('../lib/supabase', () => ({
     supabase: { from: vi.fn() },
     isSupabaseConfigured: () => true,
 }));
-vi.mock('../lib/remixGemini', () => ({ RemixGemini: class {} }));
 
 import { filterExcludedPhrases } from './remix';
 

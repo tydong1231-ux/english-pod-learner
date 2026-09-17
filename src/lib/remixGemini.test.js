@@ -17,6 +17,10 @@ function exercise(phrase, overrides = {}) {
 }
 
 describe('Remix phrase validation', () => {
+    it('treats straight and typographic apostrophes as the same phrase', () => {
+        expect(containsWholePhrase('I wouldn’t necessarily say that.', "I wouldn't necessarily say that")).toBe(true);
+        expect(isExcludedPhrase("I wouldn't necessarily say that", ['I wouldn’t necessarily say that'])).toBe(true);
+    });
     it('requires whole-word phrase matches in the source', () => {
         expect(containsWholePhrase('AI accounting products are evolving quickly.', 'accounting')).toBe(true);
         expect(containsWholePhrase('AI accounting products are evolving quickly.', 'count')).toBe(false);

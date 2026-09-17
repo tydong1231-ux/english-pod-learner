@@ -77,6 +77,13 @@ Vite embeds these values at build time.
 
 ## Production release checklist
 
+For an existing installation adding Remix, apply only
+`docs/migrations/20260917_remix_items.sql` before deploying. It creates the
+Remix table without changing Vocabulary, podcast data, or their policies.
+Remix selects and validates a phrase first, then excludes that target and all
+shown phrases before sampling previous phrases for the example-generation call.
+The browser regression suite covers Remix alongside the existing features.
+
 - Production is `https://podcast.botly.cn/`, backed by the Cloudflare Pages
   project `english-pod-learner` and GitHub `master`.
 - Fetch and compare `origin/master` with the complete working tree before

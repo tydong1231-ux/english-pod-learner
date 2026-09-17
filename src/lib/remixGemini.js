@@ -17,12 +17,24 @@ export class RemixGemini {
         });
     }
 
-    async generateExercise({ sourceSentence, excludedPhrases = [], vocabulary = [], previousPhrases = [] }) {
+    async selectPhrase({ sourceSentence, excludedPhrases = [] }) {
+        const parsed = await this.generateJson(`Source sentence: ${JSON.stringify(sourceSentence)}
+Excluded phrases: ${JSON.stringify(excludedPhrases)}
+Return {"phrase":"","noAlternative":false}.
+Choose ONE best reusable spoken-English chunk directly from the source, usually 2–10 words. Prefer versatile chunks or sentence structures; avoid proper nouns, numbers, context-specific wording and isolated basic words. Never choose an excluded phrase. If no meaningful choice remains, return {"phrase":"","noAlternative":true}.`);
+        if (parsed?.noAlternative === true) return { noAlternative: true };
+        const phrase = typeof parsed?.phrase === 'string' ? parsed.phrase.trim() : '';
+        validatePhrase(phrase, sourceSentence, excludedPhrases);
+        return { phrase, noAlternative: false };
+    }
+
+    async generateExercise({ sourceSentence, targetPhrase, excludedPhrases = [], vocabulary = [], previousPhrases = [] }) {
         const prompt = `
 Source sentence: ${JSON.stringify(sourceSentence)}
 Excluded phrases: ${JSON.stringify(excludedPhrases)}
 Vocabulary candidates: ${JSON.stringify(vocabulary)}
 Previous Remix phrase candidates: ${JSON.stringify(previousPhrases)}
+${targetPhrase ? `Target phrase (keep exactly): ${JSON.stringify(targetPhrase)}` : ''}
 
 Return:
 {
@@ -38,14 +50,18 @@ Return:
 }
 
 Rules:
-1. phrase: copy the single most useful reusable spoken-English phrase from Source, usually 2-10 words. Never choose an excluded phrase. If none remains, set phrase="" and noAlternative=true.
-2. question: one specific open question that naturally invites the phrase. Topic priority: AI accounting/product management > work/job > daily life.
+1. phrase: ${targetPhrase ? 'copy Target phrase exactly; do not select another phrase.' : 'copy the single most useful reusable spoken-English phrase from Source, usually 2-10 words. Never choose an excluded phrase. If none remains, set phrase="" and noAlternative=true.'}
+2. question: one short, specific, open-ended question that naturally invites a 20-60 second spoken answer using the phrase, without giving the answer. Topic priority: AI accounting/product management > work/job > daily life; do not force an accounting topic.
 3. examples: exactly 3 natural, complete sentences; all must use the target phrase. When natural, at least 2 use vocabulary candidates and at least 1 also uses a previous Remix phrase. Never force awkward combinations.
 4. meaning: one brief plain-English explanation.
 `;
 
         const parsed = await this.generateJson(prompt);
-        return validateExercise(parsed, sourceSentence, excludedPhrases);
+        const result = validateExercise(parsed, sourceSentence, excludedPhrases);
+        if (targetPhrase && (result.noAlternative || !isExcludedPhrase(result.phrase, [targetPhrase]))) {
+            throw new Error('Gemini changed the selected Remix phrase');
+        }
+        return result;
     }
 
     async regenerateQuestion({ phrase, sourceSentence, previousQuestion }) {
@@ -97,13 +113,7 @@ export function validateExercise(value, sourceSentence, excludedPhrases = []) {
         throw new Error('Gemini returned an incomplete Remix exercise');
     }
 
-    if (isExcludedPhrase(phrase, excludedPhrases)) {
-        throw new Error('Gemini repeated an excluded Remix phrase');
-    }
-
-    if (!containsWholePhrase(sourceSentence, phrase)) {
-        throw new Error('Gemini selected a phrase that is not in the source sentence');
-    }
+    validatePhrase(phrase, sourceSentence, excludedPhrases);
 
     if (examples.some((example) => !containsWholePhrase(example.sentence, phrase))) {
         throw new Error('Gemini returned an example without the target phrase');
@@ -170,5 +180,10 @@ function tokenize(value) {
 }
 
 function normalizeText(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
+    return String(value || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[^a-z0-9']+/g, ' ').trim();
+}
+
+function validatePhrase(phrase, sourceSentence, excludedPhrases) {
+    if (isExcludedPhrase(phrase, excludedPhrases)) throw new Error('Gemini repeated an excluded Remix phrase');
+    if (!containsWholePhrase(sourceSentence, phrase)) throw new Error('Gemini selected a phrase that is not in the source sentence');
 }

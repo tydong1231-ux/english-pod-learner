@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { RemixGemini } from '../lib/remixGemini';
+import { RemixGemini, isExcludedPhrase } from '../lib/remixGemini';
 
 const CANDIDATE_SAMPLE_SIZE = 5;
 const CANDIDATE_QUERY_LIMIT = 200;
@@ -39,14 +39,18 @@ export class RemixService {
         excludedPhrases = [],
     }) {
         ensureSupabase();
-        const candidates = await loadCandidates(excludedPhrases);
         const gemini = new RemixGemini(apiKey, modelName);
         let generated;
 
         for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
             try {
+                const selected = await gemini.selectPhrase({ sourceSentence: segment.text, excludedPhrases });
+                if (selected.noAlternative) return selected;
+                // Select first, then sample: the target cannot enter its own reuse pool.
+                const candidates = await loadCandidates([...excludedPhrases, selected.phrase]);
                 generated = await gemini.generateExercise({
                     sourceSentence: segment.text,
+                    targetPhrase: selected.phrase,
                     excludedPhrases,
                     vocabulary: candidates.vocabulary,
                     previousPhrases: candidates.previousPhrases,
@@ -136,8 +140,7 @@ async function loadCandidates(excludedPhrases = []) {
 }
 
 export function filterExcludedPhrases(values, excludedPhrases = []) {
-    const excluded = new Set(excludedPhrases.map(normalizeText).filter(Boolean));
-    return values.filter((value) => !excluded.has(normalizeText(value)));
+    return values.filter((value) => !isExcludedPhrase(value, excludedPhrases));
 }
 
 function sampleUnique(values, count) {
@@ -151,10 +154,6 @@ function sampleUnique(values, count) {
     return pool.slice(0, count);
 }
 
-function normalizeText(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9']+/g, ' ').trim();
-}
-
 function ensureSupabase() {
     if (!isSupabaseConfigured()) {
         throw new Error('Supabase is not configured. Open Settings first.');
@@ -164,7 +163,7 @@ function ensureSupabase() {
 function friendlyRemixError(error) {
     const message = error?.message || String(error);
     if (message.includes('remix_items') || message.includes('schema cache') || error?.code === 'PGRST205') {
-        return new Error('Remix database table is missing. Apply the latest docs/supabase-schema.sql first.');
+        return new Error('Remix database table is missing. Apply docs/migrations/20260917_remix_items.sql first.');
     }
     return error instanceof Error ? error : new Error(message);
 }
