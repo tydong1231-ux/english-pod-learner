@@ -5,7 +5,8 @@ import { RemixService } from '../../services/remix';
 import styles from './RemixPanel.module.css';
 
 export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
-    const { apiKey, geminiModel } = useStore();
+    const { openaiApiKey, openaiBaseUrl, openaiModel } = useStore();
+    const providerConfig = { openaiApiKey, openaiBaseUrl, openaiModel };
     const [item, setItem] = useState(null);
     const [excludedPhrases, setExcludedPhrases] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -35,16 +36,15 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
                     return;
                 }
 
-                if (!apiKey) {
-                    throw new Error('Set a Gemini API key in Settings to create a Remix.');
+                if (!openaiApiKey?.trim()) {
+                    throw new Error('Set an OpenAI Compatible API Key in Settings to create a Remix.');
                 }
 
                 const created = await RemixService.generate({
                     sourcePodcastId: podcastId,
                     sourceSegmentIndex: segmentIndex,
                     segment,
-                    apiKey,
-                    modelName: geminiModel,
+                    ...providerConfig,
                     excludedPhrases: [],
                 });
 
@@ -66,11 +66,10 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
 
         load();
         return () => { cancelled = true; };
-    }, [apiKey, geminiModel, podcastId, segment, segmentIndex]);
+    }, [openaiApiKey, openaiBaseUrl, openaiModel, podcastId, segment, segmentIndex]);
 
     const handleSwitch = async () => {
-        if (!item || !apiKey || action) return;
-
+        if (!item || !openaiApiKey?.trim() || action) return;
         const nextExcluded = [...new Set([...excludedPhrases, item.phrase].filter(Boolean))];
         setAction('switch');
         setError('');
@@ -81,16 +80,13 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
                 sourcePodcastId: podcastId,
                 sourceSegmentIndex: segmentIndex,
                 segment,
-                apiKey,
-                modelName: geminiModel,
+                ...providerConfig,
                 excludedPhrases: nextExcluded,
             });
-
             if (next.noAlternative) {
                 setNoAlternative(true);
                 return;
             }
-
             setItem(next);
             setExcludedPhrases([...nextExcluded, next.phrase]);
             setNoAlternative(false);
@@ -102,12 +98,11 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
     };
 
     const handleRegenerateQuestion = async () => {
-        if (!item || !apiKey || action) return;
-
+        if (!item || !openaiApiKey?.trim() || action) return;
         setAction('question');
         setError('');
         try {
-            const updated = await RemixService.regenerateQuestion(item, apiKey, geminiModel);
+            const updated = await RemixService.regenerateQuestion(item, providerConfig);
             setItem(updated);
         } catch (err) {
             setError(err?.message || String(err));
@@ -120,18 +115,12 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
         <div className={styles.scrim} onMouseDown={onClose}>
             <aside className={styles.panel} onMouseDown={(event) => event.stopPropagation()}>
                 <header className={styles.header}>
-                    <div className={styles.titleWrap}>
-                        <Sparkles size={18} />
-                        <strong>Remix</strong>
-                    </div>
-                    <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Close Remix">
-                        <X size={18} />
-                    </button>
+                    <div className={styles.titleWrap}><Sparkles size={18} /><strong>Remix</strong></div>
+                    <button type="button" className={styles.iconButton} onClick={onClose} aria-label="Close Remix"><X size={18} /></button>
                 </header>
 
                 <div className={styles.body}>
                     <div className={styles.source}>{segment.text}</div>
-
                     {loading ? (
                         <div className={styles.loading}><Loader size={18} className={styles.spin} /> Creating Remix...</div>
                     ) : item ? (
@@ -143,12 +132,7 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
                                         <div className={styles.phrase}>{item.phrase}</div>
                                         {item.meaning && <div className={styles.meaning}>{item.meaning}</div>}
                                     </div>
-                                    <button
-                                        type="button"
-                                        className={styles.secondaryButton}
-                                        onClick={handleSwitch}
-                                        disabled={!apiKey || Boolean(action) || noAlternative}
-                                    >
+                                    <button type="button" className={styles.secondaryButton} onClick={handleSwitch} disabled={!openaiApiKey?.trim() || Boolean(action) || noAlternative}>
                                         {action === 'switch' ? <Loader size={14} className={styles.spin} /> : <Shuffle size={14} />}
                                         {noAlternative ? 'No alternative' : 'Switch'}
                                     </button>
@@ -161,20 +145,11 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
                             </section>
 
                             <div className={styles.actions}>
-                                <button
-                                    type="button"
-                                    className={styles.secondaryButton}
-                                    onClick={handleRegenerateQuestion}
-                                    disabled={!apiKey || Boolean(action)}
-                                >
+                                <button type="button" className={styles.secondaryButton} onClick={handleRegenerateQuestion} disabled={!openaiApiKey?.trim() || Boolean(action)}>
                                     {action === 'question' ? <Loader size={14} className={styles.spin} /> : <RefreshCw size={14} />}
                                     Regenerate question
                                 </button>
-                                <button
-                                    type="button"
-                                    className={styles.primaryButton}
-                                    onClick={() => setShowExamples((value) => !value)}
-                                >
+                                <button type="button" className={styles.primaryButton} onClick={() => setShowExamples((value) => !value)}>
                                     {showExamples ? 'Hide examples' : 'Show examples'}
                                 </button>
                             </div>
@@ -191,7 +166,6 @@ export function RemixPanel({ podcastId, segmentIndex, segment, onClose }) {
                             )}
                         </>
                     ) : null}
-
                     {error && <div className={styles.error}>{error}</div>}
                 </div>
             </aside>
