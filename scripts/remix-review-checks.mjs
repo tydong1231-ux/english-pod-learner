@@ -28,8 +28,13 @@ export async function checkRemix(page, base, source, episodeId) {
         } else response = record ? [record] : [];
         await route.fulfill({ json: response });
     });
-    await page.route('https://generativelanguage.googleapis.com/**', async route => {
-        const prompt = route.request().postDataJSON().contents[0].parts[0].text;
+    await page.evaluate(source => {
+        const stored = JSON.parse(localStorage.getItem('english-pod-storage') || '{}');
+        stored.state = { ...stored.state, openaiApiKey: 'fake-test-key', openaiBaseUrl: source + '/v1', openaiModel: 'test-model' };
+        localStorage.setItem('english-pod-storage', JSON.stringify(stored));
+    }, source);
+    await page.route(source + '/v1/chat/completions', async route => {
+        const prompt = route.request().postDataJSON().messages.at(-1).content;
         prompts.push(prompt);
         let output;
         if (prompt.includes('Previous question:')) output = { question: 'What surprised you when you tested the onboarding process?' };
@@ -37,7 +42,7 @@ export async function checkRemix(page, base, source, episodeId) {
             const excluded = JSON.parse(prompt.match(/Excluded phrases: (.*)/)[1]);
             output = excluded.includes(second) ? { noAlternative: true } : exercise(excluded.includes(first) ? second : first);
         }
-        await route.fulfill({ json: { candidates: [{ content: { parts: [{ text: JSON.stringify(output) }], role: 'model' }, finishReason: 'STOP', index: 0 }] } });
+        await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify(output) } }] } });
     });
     await page.goto(`${base}/#/player/${episodeId}`);
     await page.reload();
@@ -85,5 +90,5 @@ export async function checkRemix(page, base, source, episodeId) {
     await page.unroute(source + '/rest/v1/transcripts**');
     await page.unroute(source + '/rest/v1/vocabulary**');
     await page.unroute(source + '/rest/v1/remix_items**');
-    await page.unroute('https://generativelanguage.googleapis.com/**');
+    await page.unroute(source + '/v1/chat/completions');
 }

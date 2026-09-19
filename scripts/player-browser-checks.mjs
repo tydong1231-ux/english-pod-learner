@@ -37,19 +37,55 @@ export async function checkOnlineContinuousPlayback(page, base, courses) {
         assert.equal(await page.evaluate(() => document.querySelector('audio') === window.continuousAudio), true,
             'Episode changes must reuse the user-authorized media element');
         const src = await page.locator('audio').getAttribute('src');
-        assert.equal(src.startsWith('blob:'), cached, 'Exercise both streamed and cached audio');
+        assert.ok(src.startsWith('blob:') || src.startsWith('http'), 'Prepared audio can be streamed or locally cached');
+        if (cached) assert.ok(src.startsWith('blob:'), 'A cached next episode uses device storage');
         await finishEpisode(page);
         await page.waitForFunction(() => document.querySelector('audio')?.ended);
         assert.ok(page.url().endsWith(secondRoute), 'The last episode must stop without looping');
     }
 
     // An episode-count sleep timer must still suppress automatic advancement.
+    // Hold the next transcript indefinitely: audio must not depend on its response.
+    let releaseTranscript;
+    const transcriptGate = new Promise(resolve => { releaseTranscript = resolve; });
+    const holdTranscript = async route => {
+        if (new URL(route.request().url()).searchParams.get('podcast_id') === 'eq.' + courses[1].id) await transcriptGate;
+        await route.continue().catch(() => {});
+    };
+    await page.route('**/rest/v1/transcripts**', holdTranscript);
+    try {
+        await openFirst();
+        await finishEpisode(page);
+        await page.waitForURL('**/#' + secondRoute);
+        await expectPlaying(page);
+    } finally {
+        releaseTranscript();
+        await page.unroute('**/rest/v1/transcripts**', holdTranscript);
+    }
+
     await openFirst();
     await page.getByRole('combobox', { name: 'Set sleep timer' }).selectOption('episodes:1');
     await finishEpisode(page);
     await page.waitForFunction(() => document.querySelector('audio')?.ended);
     assert.ok(page.url().endsWith(firstRoute));
     await page.getByRole('button', { name: 'Play', exact: true }).waitFor();
+
+    await openFirst();
+    await page.getByRole('combobox', { name: 'Set sleep timer' }).selectOption('episodes:2');
+    await finishEpisode(page);
+    await page.waitForURL('**/#' + secondRoute);
+    await expectPlaying(page);
+    await finishEpisode(page);
+    await page.waitForFunction(() => document.querySelector('audio')?.ended);
+    assert.ok(page.url().endsWith(secondRoute), 'The global two-episode timer stops after the second episode');
+
+    await openFirst();
+    await page.getByRole('combobox', { name: 'Set sleep timer' }).selectOption('minutes:30');
+    await finishEpisode(page);
+    await page.waitForURL('**/#' + secondRoute);
+    await expectPlaying(page);
+    await page.getByRole('button', { name: 'Cancel sleep timer' }).click();
+    assert.equal(await page.getByRole('button', { name: 'Cancel sleep timer' }).count(), 0);
 
     // Simulate a browser denying only the next automatic play attempt.
     await openFirst();

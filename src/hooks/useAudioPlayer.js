@@ -29,6 +29,7 @@ export function useAudioPlayer() {
 
     const handlePlay = useCallback(() => {
         console.log('[Audio] Play event');
+        setPlaybackError('');
         setIsPlaying(true);
     }, []);
 
@@ -165,6 +166,7 @@ export function useAudioPlayer() {
 
     return {
         audioRef,
+        audioElementRef,
         play,
         playbackError,
         isPlaying,

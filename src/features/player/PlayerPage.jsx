@@ -1,22 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Pause, SkipBack, SkipForward, ArrowLeft, Loader, Volume2, X, Timer } from 'lucide-react';
 
-import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { useEpisodePlayback } from '../../hooks/useEpisodePlayback';
 import { useStore } from '../../store';
 import { useAudioPlayer } from '../../hooks/useAudioPlayer';
 import { VocabularyDefinition } from '../../components/VocabularyDefinition';
 import { TranscriptView } from './TranscriptView';
 import { VocabService } from '../../services/vocab';
-import { cacheAudioForPodcast, checkAudioCache } from '../../lib/audioCache';
-import { isRemoteAccess, isWebBuild } from '../../lib/env';
-import { currentSource, episodeKey, getOfflineEpisode, getOfflineEpisodeSummary, hasOfflineContent, saveOfflineProgress } from '../../lib/offlineLibrary';
-import { getListeningSnapshot, listeningKey, listeningState, saveListeningProgress } from '../../lib/listeningProgress';
-import { offlineAudioUrl } from '../../lib/appShell';
 
 import styles from './PlayerPage.module.css';
 
-const PLAYBACK_CONTEXT_KEY = 'podfluent-playback-context';
 const EPISODE_TIMER_OPTIONS = [1, 2, 3, 5];
 const MINUTE_TIMER_OPTIONS = [30, 60, 90, 120];
 
@@ -24,299 +19,23 @@ export function PlayerPage() {
     const { id, offlineKey } = useParams();
     const navigate = useNavigate();
 
-    // State for data
-    const [podcast, setPodcast] = useState(null);
-    const [transcriptRecord, setTranscriptRecord] = useState(null);
-    const [loading, setLoading] = useState(isSupabaseConfigured());
-    const [loadedEpisodeKey, setLoadedEpisodeKey] = useState(null);
-
-    const { audioRef, isPlaying, play, playbackError, togglePlay, pauseAudio, seek, playFrom, currentTime, duration, checkDuration, reset } = useAudioPlayer();
-    const {
-        apiKey,
-        vocabProvider,
-        openaiApiKey,
-        openaiBaseUrl,
-        openaiModel,
-        sleepTimer,
-        setSleepTimer,
-        clearSleepTimer,
-    } = useStore();
-
-    const [audioUrl, setAudioUrl] = useState(null);
-    const [audioStatus, setAudioStatus] = useState('');
-    const [audioError, setAudioError] = useState('');
+    const { audioRef, audioElementRef, isPlaying, seek, playFrom, currentTime, duration, playbackError: controlError } = useAudioPlayer();
+    const { podcast, transcriptRecord, loading, audioStatus, audioError, playbackError: queueError, togglePlay } =
+        useEpisodePlayback({ audioElementRef, id, offlineKey, navigate });
+    const playbackError = queueError || controlError;
+    const { apiKey, vocabProvider, openaiApiKey, openaiBaseUrl, openaiModel, sleepTimer, setSleepTimer, clearSleepTimer } = useStore();
     const [loadingVocab, setLoadingVocab] = useState(false);
     const [vocabCard, setVocabCard] = useState(null);
     const [timerNow, setTimerNow] = useState(Date.now);
-    const pendingAutoplayRef = useRef(null);
-    const playbackContextRef = useRef(readPlaybackContext());
-    const resumePositionRef = useRef(null);
-    const lastProgressSaveRef = useRef(0);
-    const offlineRecordRef = useRef(null);
-    const progressTargetRef = useRef(null);
-    const flushProgress = useCallback(() => {
-        const target = progressTargetRef.current;
-        if (!target) return;
-        try { saveListeningProgress(target); }
-        catch { setAudioError('Could not save listening progress. Check available website storage.'); }
-        if (target.key) saveOfflineProgress(target.key, target.position).catch(() => {});
-    }, []);
-
     useEffect(() => {
-        const handleVisibility = () => { if (document.visibilityState === 'hidden') flushProgress(); };
-        window.addEventListener('pagehide', flushProgress);
-        document.addEventListener('visibilitychange', handleVisibility);
-        return () => {
-            flushProgress();
-            window.removeEventListener('pagehide', flushProgress);
-            document.removeEventListener('visibilitychange', handleVisibility);
-        };
-    }, [flushProgress]);
-
-    const speak = (text) => {
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = 'en-US';
-        window.speechSynthesis.speak(u);
-    };
-
-    // Fetch Podcast & Transcript
-    useEffect(() => {
-        let cancelled = false;
-        async function fetchData() {
-            flushProgress();
-            progressTargetRef.current = null;
-            setLoading(true);
-            setPodcast(null);
-            setTranscriptRecord(null);
-            setAudioUrl(null);
-            setAudioStatus('');
-            setAudioError('');
-            reset();
-            resumePositionRef.current = null;
-            offlineRecordRef.current = null;
-            lastProgressSaveRef.current = 0;
-
-            if (offlineKey) {
-                try {
-                    const record = await getOfflineEpisode(offlineKey);
-                    if (cancelled) return;
-                    if (!hasOfflineContent(record)) throw new Error('Offline download unavailable or incomplete. Download this episode again when you are online.');
-                    offlineRecordRef.current = record;
-                    const saved = listeningState(getListeningSnapshot()[listeningKey(record.source, record.podcast.id)] || record);
-                    const position = pendingAutoplayRef.current === offlineKey || saved.completed ? 0 : saved.position;
-                    resumePositionRef.current = position;
-                    progressTargetRef.current = { key: offlineKey, source: record.source, id: record.podcast.id, position, duration: record.duration, completed: saved.completed };
-                    setPodcast(record.podcast);
-                    setLoadedEpisodeKey(offlineKey);
-                    setTranscriptRecord({ segments: record.segments });
-                } catch (error) {
-                    if (!cancelled) setAudioError(error.message);
-                } finally {
-                    if (!cancelled) setLoading(false);
-                }
-                return;
-            }
-
-            if (!isSupabaseConfigured()) {
-                setLoading(false);
-                return;
-            }
-
-            try {
-                // Get Podcast Metadata
-                const { data: pod, error: podError } = await supabase
-                    .from('podcasts')
-                    .select('*')
-                    .eq('id', id)
-                    .single();
-
-                if (podError) throw podError;
-                if (cancelled) return;
-                const source = currentSource();
-                let savedRecord = getListeningSnapshot()[listeningKey(source, pod.id)];
-                if (!savedRecord) {
-                    try { savedRecord = await getOfflineEpisodeSummary(await episodeKey(source, pod.id)); }
-                    catch { /* Online playback is available even if offline storage cannot be read. */ }
-                }
-                if (cancelled) return;
-                const saved = listeningState(savedRecord);
-                const position = pendingAutoplayRef.current === id || saved.completed ? 0 : saved.position;
-                resumePositionRef.current = position;
-                progressTargetRef.current = { source, id: pod.id, position, duration: saved.duration, completed: saved.completed };
-                setPodcast(pod);
-                setLoadedEpisodeKey(id);
-
-                // Get Transcript
-                const { data: trans } = await supabase
-                    .from('transcripts')
-                    .select('*')
-                    .eq('podcast_id', id)
-                    .single();
-
-                // It's possible transcript isn't ready yet or failed
-                if (trans && !cancelled) {
-                    setTranscriptRecord({
-                        segments: trans.content // content is JSONB
-                    });
-                }
-            } catch (err) {
-                console.error("Failed to load player data", err);
-                if (!cancelled) setAudioError('Cannot load this course online. Open Offline to play a downloaded copy.');
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        }
-        fetchData();
-        return () => { cancelled = true; flushProgress(); progressTargetRef.current = null; };
-    }, [id, offlineKey, reset, flushProgress]);
-
-    useEffect(() => {
-        if (loadedEpisodeKey !== (offlineKey || id)) return undefined;
-        if (offlineKey && podcast && offlineRecordRef.current) {
-            const localUrl = offlineAudioUrl(offlineKey);
-            const url = localUrl || URL.createObjectURL(offlineRecordRef.current.audioBlob);
-            setAudioUrl(url);
-            setAudioStatus('Playing offline · audio and subtitles stored on this device.');
-            return () => { if (!localUrl) URL.revokeObjectURL(url); };
-        }
-        if (!podcast?.audio_url) return undefined;
-
-        let cancelled = false;
-        let revokeCurrent = () => { };
-
-        async function prepareAudio() {
-            const streamUrl = getPlayableAudioUrl(podcast.audio_url);
-            setAudioStatus('Preparing audio...');
-            setAudioError('');
-
-            try {
-                const cached = await checkAudioCache(podcast.id, podcast.audio_url);
-                if (cancelled) return;
-                if (cached) {
-                    const objectUrl = URL.createObjectURL(cached.audioBlob);
-                    revokeCurrent = () => URL.revokeObjectURL(objectUrl);
-                    if (!cancelled) {
-                        setAudioUrl(objectUrl);
-                        setAudioStatus('Ready from local cache.');
-                    }
-                } else {
-                    // Select one source per episode: a late cache hit must never
-                    // replace an already playing stream and interrupt playback.
-                    setAudioUrl(streamUrl);
-                    cacheAudioForPodcast(podcast.id, podcast.audio_url, (message) => {
-                        if (!cancelled) {
-                            setAudioStatus(`Streaming remote audio. ${message}`);
-                        }
-                    })
-                        .then(() => {
-                            if (!cancelled) {
-                                setAudioStatus('Streaming remote audio. Cached for next time.');
-                            }
-                        })
-                        .catch(err => {
-                            console.warn('[AudioCache] Background caching failed:', err);
-                            if (!cancelled) {
-                                setAudioStatus('Streaming remote audio. Background cache failed.');
-                            }
-                        });
-                }
-            } catch (error) {
-                console.warn('[AudioCache] Cache check failed:', error);
-                if (!cancelled) {
-                    setAudioUrl(streamUrl);
-                    setAudioError(`Cache check failed: ${error.message}`);
-                    setAudioStatus('Using remote audio.');
-                }
-            }
-        }
-
-        prepareAudio();
-
-        return () => {
-            cancelled = true;
-            revokeCurrent();
-        };
-    }, [podcast, offlineKey, id, loadedEpisodeKey]);
-
-    useEffect(() => {
-        if (loading || !audioUrl || loadedEpisodeKey !== (offlineKey || id) || pendingAutoplayRef.current !== (offlineKey || id)) return;
-        pendingAutoplayRef.current = null;
-        // The persistent audio element now has its final source. play() waits for
-        // buffering; no guessed timeout or canplay listener can lose the intent.
-        play();
-    }, [audioUrl, id, offlineKey, play, loading, loadedEpisodeKey]);
-
-    useEffect(() => {
-        if (sleepTimer?.type !== 'time') return undefined;
-
-        const deadline = Number(sleepTimer.deadline);
-        const expireTimer = () => {
-            pendingAutoplayRef.current = null;
-            pauseAudio();
-            clearSleepTimer();
-        };
-
-        const remaining = deadline - Date.now();
-        if (!Number.isFinite(deadline) || remaining <= 0) {
-            const expiredTimer = setTimeout(expireTimer, 0);
-            return () => clearTimeout(expiredTimer);
-        }
-
-        const ticker = setInterval(() => {
-            setTimerNow(Date.now());
-        }, 1000);
-        const expirationTimer = setTimeout(expireTimer, remaining);
-
-        return () => {
-            clearInterval(ticker);
-            clearTimeout(expirationTimer);
-        };
-    }, [clearSleepTimer, pauseAudio, sleepTimer]);
-
-    const handleAudioEnded = () => {
-        if (progressTargetRef.current) {
-            progressTargetRef.current.position = audioRef.current?.duration || progressTargetRef.current.duration;
-            progressTargetRef.current.completed = true;
-            flushProgress();
-        }
-        if (sleepTimer?.type === 'episodes') {
-            const remainingEpisodes = Number(sleepTimer.remainingEpisodes) || 1;
-            if (remainingEpisodes <= 1) {
-                clearSleepTimer();
-                return;
-            }
-
-            setSleepTimer({
-                ...sleepTimer,
-                remainingEpisodes: remainingEpisodes - 1,
-            });
-        } else if (sleepTimer?.type === 'time' && Number(sleepTimer.deadline) <= Date.now()) {
-            pendingAutoplayRef.current = null;
-            clearSleepTimer();
-            return;
-        }
-
-        if (offlineKey) {
-            try {
-                const queue = JSON.parse(sessionStorage.getItem('podfluent-offline-queue') || '[]');
-                const index = queue.indexOf(offlineKey);
-                if (index >= 0 && queue[index + 1]) {
-                    pendingAutoplayRef.current = queue[index + 1];
-                    navigate('/offline/player/' + queue[index + 1], { replace: true });
-                }
-            } catch { /* Stop at the end if the local queue is unavailable. */ }
-            return;
-        }
-
-        const context = playbackContextRef.current;
-        const orderedIds = Array.isArray(context?.orderedIds) ? context.orderedIds : [];
-        const currentIndex = orderedIds.findIndex((podcastId) => String(podcastId) === String(id));
-        const nextId = currentIndex >= 0 ? orderedIds[currentIndex + 1] : null;
-
-        if (!nextId) return;
-
-        pendingAutoplayRef.current = String(nextId);
-        navigate('/player/' + nextId, { replace: true });
+        if (sleepTimer?.type !== 'time') return;
+        const ticker = setInterval(() => setTimerNow(Date.now()), 1000);
+        return () => clearInterval(ticker);
+    }, [sleepTimer]);
+    const speak = text => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        window.speechSynthesis.speak(utterance);
     };
 
     const handleSleepTimerChange = (event) => {
@@ -587,48 +306,7 @@ export function PlayerPage() {
     // Replacing it discards the browser's playback permission for that element.
     return (
         <>
-            <audio
-                ref={audioRef}
-                src={audioUrl || undefined}
-                preload="auto"
-                playsInline
-                onTimeUpdate={(event) => {
-                    if (resumePositionRef.current !== null || !progressTargetRef.current || event.currentTarget.ended) return;
-                    progressTargetRef.current.position = event.currentTarget.currentTime;
-                    progressTargetRef.current.duration = event.currentTarget.duration;
-                    if (Date.now() - lastProgressSaveRef.current < 3000) return;
-                    lastProgressSaveRef.current = Date.now();
-                    flushProgress();
-                }}
-                onPause={(event) => {
-                    if (progressTargetRef.current && resumePositionRef.current === null && !event.currentTarget.ended) {
-                        progressTargetRef.current.position = event.currentTarget.currentTime;
-                        flushProgress();
-                    }
-                }}
-                onSeeked={(event) => {
-                    if (progressTargetRef.current && resumePositionRef.current === null) {
-                        progressTargetRef.current.position = event.currentTarget.currentTime;
-                        flushProgress();
-                    }
-                }}
-                onEnded={handleAudioEnded}
-                onLoadedMetadata={(event) => {
-                    checkDuration();
-                    if (progressTargetRef.current) progressTargetRef.current.duration = event.currentTarget.duration;
-                    if (resumePositionRef.current !== null) {
-                        const savedPosition = resumePositionRef.current;
-                        resumePositionRef.current = null;
-                        seek(Math.min(savedPosition, event.currentTarget.duration || savedPosition));
-                    }
-                }}
-                onCanPlay={checkDuration}
-                onLoadedData={checkDuration}
-                onError={(event) => {
-                    const code = event.currentTarget.error?.code;
-                    setAudioError(`Audio playback failed${code ? ` (code ${code})` : ''}.`);
-                }}
-            />
+            <audio ref={audioRef} preload="auto" playsInline />
             {renderContent()}
         </>
     );
@@ -660,24 +338,4 @@ function formatSleepTimerLabel(timer, now) {
     }
 
     return '';
-}
-
-function getPlayableAudioUrl(sourceUrl) {
-    if (isRemoteAccess && !isWebBuild) {
-        return `/audio-proxy?url=${encodeURIComponent(sourceUrl)}`;
-    }
-
-    return sourceUrl;
-}
-
-function readPlaybackContext() {
-    if (typeof localStorage === 'undefined') return null;
-
-    try {
-        const parsed = JSON.parse(localStorage.getItem(PLAYBACK_CONTEXT_KEY) || 'null');
-        if (!parsed || !Array.isArray(parsed.orderedIds)) return null;
-        return parsed;
-    } catch {
-        return null;
-    }
 }

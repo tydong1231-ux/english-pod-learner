@@ -161,13 +161,23 @@ try {
     await page.screenshot({ path: 'artifacts/mobile-add-downloads.png' });
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     assert.equal(await page.getByRole('button', { name: 'Download (0)', exact: true }).isDisabled(), true);
+    const launch = await context.newPage();
+    await launch.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
+    await launch.goto(base + '/#/offline');
+    await launch.waitForURL('**/#/');
+    const manifest = await launch.evaluate(async () => (await (await fetch('/manifest.webmanifest')).json()));
+    assert.equal(manifest.start_url, '/#/');
+    await launch.getByRole('link', { name: 'Offline', exact: true }).click();
+    await launch.waitForURL('**/#/offline');
+    await launch.close();
     // Close the page, go offline and cold-open the PWA start URL in a new page.
     await page.close();
     offline = true;
     await context.setOffline(true);
     const offlinePage = await context.newPage();
+    await offlinePage.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
     offlinePage.on('pageerror', error => errors.push(error.message));
-    await offlinePage.goto(base + '/#/offline');
+    await offlinePage.goto(base + '/#/'); // New Library start URL must still cold-launch offline.
     await offlinePage.getByText('2 episodes downloaded · 0h 2m available offline').waitFor();
     await offlinePage.getByRole('searchbox', { name: 'Search downloads' }).fill('airport');
     assert.equal(await offlinePage.locator('.offline-course').count(), 1);
@@ -206,7 +216,8 @@ try {
     // Removing a local download must remove its passive Library badge too.
     offline = false;
     await context.setOffline(false);
-    await offlinePage.goto(base + '/#/offline');
+    await offlinePage.goto(base + '/#/');
+    await offlinePage.getByRole('link', { name: 'Offline', exact: true }).click();
     offlinePage.once('dialog', dialog => dialog.accept());
     await offlinePage.getByRole('button', { name: /^Remove offline download/ }).first().click();
     await offlinePage.waitForFunction(() => document.querySelectorAll('.offline-course').length === 1);

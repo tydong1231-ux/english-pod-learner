@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 export async function checkListeningProgress(page, base, source, courses) {
     const library = () => page.goto(base + '/#/');
     const row = id => page.locator(`[data-testid="library-episode"][data-episode-id="${id}"]`);
+    await library(); // Flush the preceding player's real progress before seeding history.
     await page.evaluate(({ source, courses }) => {
         localStorage.removeItem('podfluent-library-state');
         const records = Object.fromEntries(courses.slice(0, 8).map(course => [JSON.stringify([source, course.id]), { position: 60, duration: 60, completed: true }]));
@@ -15,6 +16,22 @@ export async function checkListeningProgress(page, base, source, courses) {
     assert.equal(await row(courses[0].id).getByRole('progressbar').getAttribute('aria-valuetext'), 'Played');
     await page.getByRole('combobox', { name: 'Sort library' }).selectOption('title_desc');
     assert.equal(await page.locator('[data-next-unplayed="true"]').getAttribute('data-episode-id'), courses[8].id, 'Sorting does not choose another target');
+    // A last-played item takes precedence over newest-unplayed, even when an old
+    // folder/search would hide it. Preserve the user's sorting choice.
+    await page.evaluate(({ source, episode }) => {
+        const records = JSON.parse(localStorage.getItem('podfluent-listening-progress-v1'));
+        records[JSON.stringify([source, episode.id])] = { started: true, position: 12, duration: 60, lastPlayedAt: new Date().toISOString() };
+        localStorage.setItem('podfluent-listening-progress-v1', JSON.stringify(records));
+        localStorage.setItem('podfluent-library-state', JSON.stringify({ folder: 'Not this folder', searchQuery: 'no matching title', sortMode: 'title_desc' }));
+    }, { source, episode: courses[10] });
+    await library();
+    await row(courses[10].id).getByText('最近播放', { exact: true }).waitFor();
+    await page.waitForFunction(id => {
+        const rect = document.querySelector(`[data-episode-id="${id}"]`)?.getBoundingClientRect();
+        return rect && rect.top >= 0 && rect.bottom < innerHeight;
+    }, courses[10].id);
+    assert.equal(await page.getByRole('combobox', { name: 'Sort library' }).inputValue(), 'title_desc');
+    assert.equal(await row(courses[10].id).getByRole('progressbar').getAttribute('aria-valuetext'), '20% played');
     await page.evaluate(() => {
         localStorage.removeItem('podfluent-listening-progress-v1');
         localStorage.removeItem('podfluent-library-state');
@@ -48,6 +65,7 @@ export async function checkListeningProgress(page, base, source, courses) {
     await page.waitForFunction(() => document.querySelector('audio')?.ended);
     await library();
     await row(courses[2].id).getByRole('progressbar').waitFor();
+    await row(courses[2].id).getByText('最近播放', { exact: true }).waitFor();
     assert.equal(await row(courses[2].id).getByRole('progressbar').getAttribute('aria-valuetext'), 'Played', 'Completion survives navigation for an undownloaded episode');
     await row(courses[2].id).click();
     await page.waitForFunction(() => document.querySelector('audio')?.readyState >= 2);

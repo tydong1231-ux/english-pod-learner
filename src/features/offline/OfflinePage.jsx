@@ -10,7 +10,7 @@ import { isRemoteAccess } from '../../lib/env';
 import { useListeningProgress } from '../../hooks/useListeningProgress';
 import { useUnplayedLocation } from '../../hooks/useUnplayedLocation';
 import { ListeningProgress } from '../../components/ListeningProgress';
-import { listeningState } from '../../lib/listeningProgress';
+import { listeningState, mostRecentlyPlayed } from '../../lib/listeningProgress';
 import './offline.css';
 
 export function OfflinePage() {
@@ -24,9 +24,10 @@ export function OfflinePage() {
     const { progressFor, ready: progressReady } = useListeningProgress();
     const withProgress = episodes.map(record => {
         const progress = progressFor(record.podcast, record.source) || record;
-        return { ...record, ...listeningState(progress, record.duration), progressUpdatedAt: progress.updatedAt || record.progressUpdatedAt };
+        return { ...record, ...listeningState(progress, record.duration), lastPlayedAt: progress.lastPlayedAt, progressUpdatedAt: progress.updatedAt || record.progressUpdatedAt };
     });
     const query = search.trim().toLocaleLowerCase();
+    const lastPlayed = mostRecentlyPlayed(withProgress, record => record);
     const displayedEpisodes = withProgress.filter(record => `${record.podcast.title} ${record.podcast.folder || ''}`.toLocaleLowerCase().includes(query))
         .sort((a, b) => (Date.parse(b.podcast.created_at) || Date.parse(b.savedAt) || 0) - (Date.parse(a.podcast.created_at) || Date.parse(a.savedAt) || 0));
     const listRef = useUnplayedLocation(displayedEpisodes.filter(hasOfflineContent).map(record => ({ ...record.podcast, id: record.key, progress: record })), episode => episode.progress, !loading && progressReady && view === 'saved');
@@ -79,7 +80,8 @@ export function OfflinePage() {
             {episodes.length > 0 && <label className="offline-search"><Search size={18} /><input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search downloads" aria-label="Search downloads" /><span>{displayedEpisodes.length}/{episodes.length}</span></label>}
             {loading ? <p>Loading offline episodes…</p> : episodes.length === 0 ? <div className="offline-empty"><p>No downloads yet.</p><p>Choose episodes in Add downloads to listen without a connection.</p><button className="offline-button primary" onClick={() => { setCatalogOpened(true); setView('browse'); }}>Choose episodes</button></div> : (
                 <div className="offline-list" ref={listRef}>{displayedEpisodes.length === 0 && <div className="offline-empty"><p>No downloads match “{search}”.</p><button className="offline-button" onClick={() => setSearch('')}>Show all downloads</button></div>}{displayedEpisodes.map(record => (
-                    <article className="offline-course" key={record.key} data-episode-id={record.key}>
+                    <article className="offline-course" key={record.key} data-episode-id={record.key} data-last-played={lastPlayed?.key === record.key ? 'true' : undefined}>
+                        {lastPlayed?.key === record.key && <span className="last-played-badge">最近播放</span>}
                         <div className="offline-course-info"><h2>{record.podcast.title}</h2><p className="offline-course-meta"><span title={record.podcast.folder || 'Inbox'}>{record.podcast.folder || 'Inbox'} · {formatOfflineDuration(record.duration)}</span><ListeningProgress record={record} duration={record.duration} title={record.podcast.title} /></p>{!hasOfflineContent(record) && <span className="offline-badge">Incomplete — remove and download again</span>}</div>
                         <div className="offline-course-actions">
                             <button className="offline-button primary" onClick={() => open(record)} disabled={!hasOfflineContent(record)} aria-label="Play" title={`Play ${record.podcast.title}`}><Play size={18} /></button>

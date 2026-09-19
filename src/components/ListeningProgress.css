@@ -8,3 +8,5 @@
 .listening-progress[data-state="completed"] progress::-moz-progress-bar { background: var(--color-success); }
 .listening-progress > span { flex: 0 0 auto; font-size: .68rem; line-height: 1.2; white-space: nowrap; }
 [data-next-unplayed="true"] { box-shadow: inset 2px 0 var(--color-primary) !important; }
+[data-last-played="true"] { box-shadow: inset 3px 0 var(--color-primary) !important; }
+.last-played-badge { color: var(--color-primary); font-size: .68rem; font-weight: 600; white-space: nowrap; }

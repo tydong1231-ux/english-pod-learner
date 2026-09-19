@@ -3,7 +3,7 @@
   "name": "PodFluent",
   "short_name": "PodFluent",
   "description": "Download podcasts before your flight, then listen and follow subtitles offline.",
-  "start_url": "/#/offline",
+  "start_url": "/#/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f6f8fb",

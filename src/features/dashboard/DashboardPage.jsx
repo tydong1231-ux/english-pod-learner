@@ -30,6 +30,7 @@ import { useDownloadedEpisodes } from '../../hooks/useDownloadedEpisodes';
 import { useListeningProgress } from '../../hooks/useListeningProgress';
 import { useUnplayedLocation } from '../../hooks/useUnplayedLocation';
 import { ListeningProgress } from '../../components/ListeningProgress';
+import { mostRecentlyPlayed } from '../../lib/listeningProgress';
 import styles from './DashboardPage.module.css';
 
 const ALL_FOLDERS = 'all';
@@ -110,7 +111,17 @@ export function DashboardPage() {
         return filtered;
     }, [podcasts, searchQuery, selectedFolder, sortMode]);
 
-    const listRef = useUnplayedLocation(displayedPodcasts.filter(episode => episode.status === PodcastStatus.READY), progressFor, !loading && progressReady);
+    const lastPlayed = mostRecentlyPlayed(podcasts.filter(episode => episode.status === PodcastStatus.READY), progressFor);
+    const [locationRestored, setLocationRestored] = useState(false);
+    useEffect(() => {
+        if (loading || !progressReady || locationRestored) return;
+        if (lastPlayed && !displayedPodcasts.some(episode => episode.id === lastPlayed.id)) {
+            setSelectedFolder(normalizeFolder(lastPlayed.folder));
+            setSearchQuery('');
+        }
+        setLocationRestored(true);
+    }, [loading, progressReady, locationRestored, lastPlayed, displayedPodcasts]);
+    const listRef = useUnplayedLocation(displayedPodcasts.filter(episode => episode.status === PodcastStatus.READY), progressFor, !loading && progressReady && locationRestored);
     const selectedFolderCount = selectedFolder === ALL_FOLDERS
         ? podcasts.length
         : folderCounts.get(selectedFolder) || 0;
@@ -127,11 +138,11 @@ export function DashboardPage() {
     }, [selectedFolder, sortMode, searchQuery]);
 
     useEffect(() => {
-        if (loading) return;
+        if (loading || !locationRestored) return;
         if (selectedFolder !== ALL_FOLDERS && !folders.includes(selectedFolder)) {
             setSelectedFolder(ALL_FOLDERS);
         }
-    }, [folders, loading, selectedFolder]);
+    }, [folders, loading, selectedFolder, locationRestored]);
 
     useEffect(() => {
         if (selectedFolder !== ALL_FOLDERS) {
@@ -780,6 +791,7 @@ export function DashboardPage() {
                                     className={styles.card}
                                     data-testid="library-episode"
                                     data-episode-id={podcast.id}
+                                    data-last-played={lastPlayed?.id === podcast.id ? 'true' : undefined}
                                     tabIndex={podcast.status === PodcastStatus.READY ? 0 : undefined}
                                     onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ') && podcast.status === PodcastStatus.READY) { event.preventDefault(); handleOpenPodcast(podcast.id); } }}
                                     onClick={() => podcast.status === PodcastStatus.READY && handleOpenPodcast(podcast.id)}
@@ -797,6 +809,7 @@ export function DashboardPage() {
                                     <div className={styles.cardContent}>
                                         <h3 className={styles.cardTitle}>{podcast.title}</h3>
                                         <div className={styles.cardMeta}>
+                                            {lastPlayed?.id === podcast.id && <span className="last-played-badge">最近播放</span>}
                                             <span>{new Date(podcast.created_at).toLocaleDateString()}</span>
                                             <span className={styles.statusBadge} data-status={podcast.status}>
                                                 {podcast.status}

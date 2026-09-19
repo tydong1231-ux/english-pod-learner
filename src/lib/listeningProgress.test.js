@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { getListeningSnapshot, listeningKey, listeningState, newestUnplayed, saveListeningProgress, LISTENING_KEY } from './listeningProgress';
+import { getListeningSnapshot, listeningKey, listeningState, newestUnplayed, mostRecentlyPlayed, markLastPlayed, saveListeningProgress, LISTENING_KEY } from './listeningProgress';
 
 beforeEach(() => {
     const items = new Map();
@@ -13,6 +13,21 @@ const target = { source: 'https://example.test', id: 'one', position: 25, durati
 const read = () => getListeningSnapshot()[listeningKey(target.source, target.id)];
 
 describe('local listening history', () => {
+    it('marks actual playback, preserves the marker during progress saves and ignores mere opens', () => {
+        markLastPlayed(target.source, target.id);
+        const at = read().lastPlayedAt;
+        saveListeningProgress(target);
+        expect(read().lastPlayedAt).toBe(at);
+        saveListeningProgress({ ...target, id: 'two', position: 0 });
+        const progressFor = item => getListeningSnapshot()[listeningKey(target.source, item.id)];
+        expect(mostRecentlyPlayed([{ id: 'two' }, { id: 'one' }], progressFor).id).toBe('one');
+    });
+    it('locates the last played episode regardless of sort and tolerates deleted history', () => {
+        const episodes = [{ id: 'a', started: true, lastPlayedAt: '2026-09-17' }, { id: 'b', completed: true, lastPlayedAt: '2026-09-19' }];
+        expect(mostRecentlyPlayed(episodes, item => item).id).toBe('b');
+        expect(mostRecentlyPlayed([...episodes].reverse(), item => item).id).toBe('b');
+        expect(mostRecentlyPlayed([], item => item)).toBeNull();
+    });
     it('does not mark an episode heard just by opening it', () => {
         saveListeningProgress({ ...target, position: 0 });
         expect(read()).toBeUndefined();

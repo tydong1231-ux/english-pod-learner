@@ -42,6 +42,7 @@ export function saveListeningProgress({ source, id, position, duration, complete
     const previous = records[key];
     if (!previous && position === 0 && !completed) return;
     const record = {
+        lastPlayedAt: previous?.lastPlayedAt,
         position,
         duration: Number.isFinite(duration) && duration > 0 ? duration : previous?.duration || 0,
         started: previous?.started || position > 0 || completed,
@@ -56,4 +57,25 @@ export function saveListeningProgress({ source, id, position, duration, complete
 export function newestUnplayed(episodes, progressFor) {
     return episodes.filter(episode => !listeningState(progressFor(episode)).started)
         .reduce((latest, episode) => !latest || (Date.parse(episode.created_at) || 0) > (Date.parse(latest.created_at) || 0) ? episode : latest, null);
+}
+
+export function markLastPlayed(source, id) {
+    const records = getListeningSnapshot();
+    const key = listeningKey(source, id);
+    localStorage.setItem(LISTENING_KEY, JSON.stringify({ ...records, [key]: {
+        ...records[key], started: true, lastPlayedAt: new Date().toISOString(),
+    } }));
+    window.dispatchEvent(new Event(CHANGED));
+}
+
+export function mostRecentlyPlayed(episodes, progressFor) {
+    let latest = null, timestamp = 0;
+    const explicitlyPlayed = episodes.some(episode => progressFor(episode)?.lastPlayedAt);
+    for (const episode of episodes) {
+        const progress = progressFor(episode);
+        if (explicitlyPlayed && !progress?.lastPlayedAt) continue;
+        const time = Date.parse(progress?.lastPlayedAt || progress?.updatedAt || progress?.progressUpdatedAt) || 0;
+        if (listeningState(progress).started && time > timestamp) { latest = episode; timestamp = time; }
+    }
+    return latest;
 }
