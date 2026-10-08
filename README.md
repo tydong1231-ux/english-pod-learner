@@ -1,5 +1,11 @@
 # PodFluent
 
+<img src="./public/icon.png" alt="PodFluent app icon" width="84" align="right" />
+
+A podcast-based English learning app with transcription, synchronized subtitles, and vocabulary tools.
+
+[Features](docs/FEATURES.md) · [Offline-flight guide](docs/offline-flight.md)
+
 PodFluent is a desktop-first English podcast learning app. Import an audio or video file, transcribe it with a local WhisperX engine or Gemini fallback, follow timestamped subtitles while listening, and turn clicked words into vocabulary cards.
 
 It is best suited for personal learning libraries and self-hosted deployments.
@@ -17,6 +23,30 @@ build can read already-processed Supabase data from any device.
 - Cloud web read access through Cloudflare Pages, backed directly by Supabase.
 - Installable mobile PWA with batch flight downloads, verified offline audio/subtitles, saved playback position, and Flight Ready checks.
 - Optional local-network remote access through Cloudflare Tunnel.
+
+## Product walkthrough
+
+For a **self-hosted demo**, follow [Quick Start](#quick-start) and then:
+
+1. Import a podcast or another supported audio/video file using the Electron app.
+2. Transcribe with local WhisperX or the configured Gemini fallback.
+3. Play the episode while following word-aligned subtitles.
+4. Select an unfamiliar word to create a contextual vocabulary card.
+5. Prepare an offline PWA library and verify the audio/subtitles are available before travel, using the [flight guide](docs/offline-flight.md).
+
+This documents a reproducible product flow, **not** a hosted public demo or a claim of measured learning outcomes.
+
+## Product decisions and trade-offs
+
+| Product decision | Reasoning |
+| --- | --- |
+| Podcast-first learning | Keep listening central and turn vocabulary lookup into an in-context action |
+| Word-level timestamps | Let learners revisit a precise moment instead of scrubbing through a transcript |
+| Local transcription with cloud fallback | Balance user control and running cost with resilience when local models are unavailable |
+| Verified offline downloads | An offline badge should mean the required media and captions are actually available |
+| Private-by-default deployment | A personal learning library should not assume public access or expose provider keys |
+
+**Real screenshots:** This repository includes the actual app icon above. An annotated UI screenshot or walkthrough video has not yet been published; the feature inventory and self-hosted steps provide the current verifiable demonstration.
 
 ## Requirements
 
